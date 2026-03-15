@@ -1,0 +1,54 @@
+# === Secrets ===
+.env
+*.key
+credentials/
+
+# === Investigation Data (never committed) ===
+data/
+evidence/
+exports/
+screenshots/
+reports/
+output/
+
+# === Neo4j data ===
+neo4j-data/
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+
+# === Jupyter ===
+.ipynb_checkpoints/
+
+# === OS ===
+.DS_Store
+Thumbs.db
+*~
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === Research notes (methodology, not code) ===
+*-assessment*.md
+*-landscape*.md
+
+# === Logs ===
+logs/
+*.log
+
+# === Tool caches ===
+.spiderfoot/
+.cache/
+.pytest_cache/

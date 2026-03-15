@@ -1,0 +1,27 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7474:7474"   # Browser UI
+      - "7687:7687"   # Bolt protocol
+    environment:
+      NEO4J_AUTH: neo4j/changeme
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+
+  # ArchiveBox for evidence preservation
+  archivebox:
+    image: archivebox/archivebox:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - archivebox-data:/data
+    environment:
+      ALLOWED_HOSTS: "*"
+
+volumes:
+  neo4j-data:
+  neo4j-logs:
+  archivebox-data:

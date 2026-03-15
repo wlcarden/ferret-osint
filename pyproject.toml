@@ -1,0 +1,73 @@
+[project]
+name = "ferret-osint"
+version = "0.1.0"
+description = "Agentic OSINT toolkit that chains 35+ data sources into a unified entity graph"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+    # --- Identity Resolution ---
+    "maigret",               # Username search across 2500+ sites
+    "sherlock-project",      # Username search across 400+ sites
+    "holehe",                # Email-to-platform registration check
+
+    # --- Social Media ---
+    "instaloader",           # Instagram scraping with JSON metadata
+    "praw",                  # Reddit API wrapper
+    # twscrape available but requires account management — install manually
+
+    # --- Email & Phone ---
+    # theHarvester: PyPI package is a stale placeholder. Install from git:
+    #   pip install git+https://github.com/laramies/theHarvester.git
+
+    # --- Public Records ---
+    "edgartools",            # SEC EDGAR structured access
+
+    # --- Web Archiving ---
+    "waybackpy",             # Wayback Machine API wrapper
+
+    # --- Reconnaissance ---
+    "python-whois",          # WHOIS domain registration lookups
+    # spiderfoot: not on PyPI — install via git clone + docker. See scripts/bootstrap.sh
+
+    # --- Data & Graph ---
+    "neo4j",                 # Graph database driver
+    "networkx",              # In-memory graph analysis
+    "pandas",                # Data normalization
+
+    # --- HTTP & Scraping ---
+    "ddgs",                  # DuckDuckGo web and news search
+    "httpx",                 # Async HTTP client
+    "beautifulsoup4",        # HTML parsing
+    "lxml",                  # Fast XML/HTML parser
+
+    # --- Config & Environment ---
+    "python-dotenv",         # .env file loading
+    "pyyaml",                # YAML config parsing
+    "pydantic",              # Data validation and schemas
+
+    # --- LLM ---
+    "anthropic",             # Claude API SDK
+
+    # --- Output ---
+    "rich",                  # Terminal output formatting
+    "jinja2",                # Report templating
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "ipython",
+    "jupyter",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
