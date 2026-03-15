@@ -227,8 +227,8 @@ async def test_person_rejected_name_only_match(store):
 
 
 @pytest.mark.asyncio
-async def test_person_three_token_name_with_employer_probable(store):
-    """should create probable link for 3-token name + matching employer"""
+async def test_person_three_token_name_with_employer_confirmed(store):
+    """should create confirmed link for 3-token name + employer from different sources"""
     finding_a = Finding(
         entities=[
             Entity(
@@ -258,8 +258,8 @@ async def test_person_three_token_name_with_employer_probable(store):
 
     assert len(aka_rels) == 1
     rel = aka_rels[0]
-    # name (3-token, semi_unique: 1.0) + employer (semi_unique: 1.0) = 2.0 → probable
-    assert_corroboration_level(rel, "probable")
+    # name(1.0) + source_diversity(1.0) + employer(1.0) = 3.0 → confirmed
+    assert_corroboration_level(rel, "confirmed")
 
 
 # ── Cross-source organization resolution ────────────────────────

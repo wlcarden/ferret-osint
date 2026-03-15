@@ -254,7 +254,7 @@ def test_resolve_person_name_plus_unique_id_links(resolver):
 
 
 def test_resolve_person_three_token_name_plus_property(resolver):
-    """should link persons with specific 3-token name + one property"""
+    """should link persons with specific 3-token name + property from different sources"""
     entities = [
         _make_person(
             "person:fec:wlc", "William Leighton Carden",
@@ -266,8 +266,9 @@ def test_resolve_person_three_token_name_plus_property(resolver):
         ),
     ]
     rels = resolver.resolve(entities)
-    # name(1.0) + state(0.5) = 1.5 → still insufficient
-    assert len(rels) == 0
+    # name(1.0) + source_diversity(1.0) + state(0.5) = 2.5 → probable
+    assert len(rels) == 1
+    assert rels[0].properties["corroboration_level"] == "probable"
 
 
 def test_resolve_person_corroboration_details_in_properties(resolver):

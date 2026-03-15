@@ -6,12 +6,18 @@ corroborating factors before attributing records to the same individual.
 Factor weights (PERSON):
   - Unique identifiers (email, phone, DOB): 2.0 each
   - Semi-unique (full address, employer+role, 3+ token name): 1.0 each
+  - Source diversity (distinctive name from different tools): 1.0
   - Weak (common 2-token name, city, state): 0.5 each
 
 Thresholds (PERSON):
   - Probable link: cumulative weight >= 2.0
   - Confirmed link: cumulative weight >= 3.0
   - Below probable: no link created
+
+Source diversity bonus: a distinctive name (3+ tokens) appearing
+independently in different tool databases is itself corroborating
+evidence. Common 2-token names (e.g., "John Smith") don't qualify
+because false-positive rates are too high.
 
 Factor weights (ORGANIZATION):
   - Unique identifiers (EIN, DUNS, registration_number, bioguide_id): 2.0
@@ -149,6 +155,24 @@ class CorroborationPolicy:
             factors.extend(self._score_org_properties(e1, e2))
         else:
             factors.extend(self._score_properties(e1, e2))
+
+        # Cross-source diversity bonus (PERSON only): a distinctive
+        # name (3+ tokens) appearing independently in different tool
+        # databases is corroborating evidence.  Common 2-token names
+        # don't qualify — too many false positives.
+        if not is_org and name_similarity >= 0.9:
+            tokens1 = e1.label.lower().split()
+            tokens2 = e2.label.lower().split()
+            max_tokens = max(len(tokens1), len(tokens2))
+            if max_tokens >= 3 and _are_different_sources(e1, e2):
+                factors.append(CorroborationFactor(
+                    field="source_diversity",
+                    value=(
+                        f"{_source_tool(e1)} + {_source_tool(e2)}"
+                    ),
+                    weight=WEIGHT_SEMI_UNIQUE,
+                    category="semi_unique",
+                ))
 
         total = sum(f.weight for f in factors)
 
@@ -352,3 +376,18 @@ class CorroborationPolicy:
         else:
             ratio = weight / prob_thresh if prob_thresh > 0 else 0.0
             return ratio * 0.59
+
+
+def _are_different_sources(e1: Entity, e2: Entity) -> bool:
+    """Check if two entities come from different tool sources."""
+    tools1 = {s.tool for s in e1.sources if s.tool}
+    tools2 = {s.tool for s in e2.sources if s.tool}
+    return bool(tools1) and bool(tools2) and not tools1.intersection(tools2)
+
+
+def _source_tool(entity: Entity) -> str:
+    """Extract the primary tool name from an entity's sources."""
+    for s in entity.sources:
+        if s.tool:
+            return s.tool
+    return "unknown"

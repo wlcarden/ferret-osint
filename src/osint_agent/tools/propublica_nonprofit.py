@@ -70,6 +70,21 @@ class ProPublicaNonprofitAdapter(ToolAdapter):
         if not orgs:
             return Finding(notes=f"ProPublica: no nonprofits found for '{name}'")
 
+        # Filter to results whose name is relevant to the query.
+        # ProPublica's search is very fuzzy and returns unrelated orgs.
+        relevant = [
+            o for o in orgs
+            if _is_relevant_result(name, o.get("name", ""))
+        ]
+        if not relevant:
+            return Finding(
+                notes=(
+                    f"ProPublica: {len(orgs)} result(s) for '{name}' "
+                    "but none matched closely enough"
+                ),
+            )
+        orgs = relevant
+
         entities: list[Entity] = []
         relationships: list[Relationship] = []
 
@@ -228,6 +243,44 @@ class ProPublicaNonprofitAdapter(ToolAdapter):
             },
             sources=[_SOURCE()],
         )
+
+
+def _is_relevant_result(query: str, org_name: str) -> bool:
+    """Check if a ProPublica search result is relevant to the query.
+
+    The ProPublica search API uses aggressive fuzzy matching that
+    returns results like "Water Wind Wine Ministries" for a query
+    of "WINRED".  This filter requires at least one of:
+      1. Direct substring match (query in name or vice versa)
+      2. Acronym match ("NRA" → "National Rifle Association")
+      3. Token-level overlap (a query word appears in a name word)
+    """
+    q_lower = query.lower().strip()
+    n_lower = org_name.lower().strip()
+
+    # Direct substring match covers exact and contains cases.
+    if q_lower in n_lower or n_lower in q_lower:
+        return True
+
+    q_tokens = q_lower.split()
+    n_tokens = n_lower.split()
+
+    # Acronym match: "nra" == first letters of "national rifle association".
+    if len(q_tokens) == 1 and len(n_tokens) >= 2:
+        initials = "".join(t[0] for t in n_tokens if t)
+        if q_lower == initials:
+            return True
+
+    # Token-level: at least one query token (3+ chars) must appear
+    # as a substring in some name token or vice versa.
+    for qt in q_tokens:
+        if len(qt) < 3:
+            continue
+        for nt in n_tokens:
+            if qt in nt or nt in qt:
+                return True
+
+    return False
 
 
 def _ntee_category(code: str) -> str:

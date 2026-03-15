@@ -6,6 +6,7 @@ politicians, lobbyists, corporate boards, and government officials.
 No API key or authentication required.
 """
 
+import asyncio
 import logging
 
 import httpx
@@ -156,41 +157,65 @@ class LittleSisAdapter(ToolAdapter):
                 f"{_BASE}/entities/{ls_id}/relationships",
             )
             resp.raise_for_status()
-            rel_data = resp.json().get("data", [])
+            resp_json = resp.json()
+            rel_data = resp_json.get("data", [])
         except Exception as exc:
             logger.debug("Failed to fetch relationships for %s: %s", ls_id, exc)
             return entity, rels
 
-        for rel_item in rel_data[:30]:  # Cap to avoid huge graphs.
+        # Parse included entities from JSON:API response (if present).
+        included_map: dict[str, dict] = {}
+        for inc in resp_json.get("included", []):
+            inc_id = str(inc.get("id", ""))
+            inc_attrs = inc.get("attributes", {})
+            if inc_id and inc_attrs:
+                included_map[inc_id] = inc_attrs
+
+        # Collect unique other-entity IDs needing resolution.
+        other_ids_needed: set[str] = set()
+        for rel_item in rel_data[:30]:
+            rel_attrs = rel_item.get("attributes", {})
+            entity1_id = str(rel_attrs.get("entity1_id", ""))
+            entity2_id = str(rel_attrs.get("entity2_id", ""))
+            other_id = entity2_id if entity1_id == str(ls_id) else entity1_id
+            if other_id and other_id not in included_map:
+                other_ids_needed.add(other_id)
+
+        # Batch-fetch names for entities not in included data.
+        if other_ids_needed:
+            fetched = await self._batch_fetch_entities(
+                client, other_ids_needed,
+            )
+            for eid, attrs in fetched.items():
+                included_map[eid] = attrs
+
+        # Build relationship entities with resolved names.
+        for rel_item in rel_data[:30]:
             rel_attrs = rel_item.get("attributes", {})
             cat_id = rel_attrs.get("category_id")
             cat_label, rel_type = _REL_CATEGORIES.get(
                 cat_id, ("unknown", RelationType.CONNECTED_TO),
             )
 
-            # Determine the other entity in this relationship.
             entity1_id = str(rel_attrs.get("entity1_id", ""))
             entity2_id = str(rel_attrs.get("entity2_id", ""))
-            if entity1_id == str(ls_id):
-                other_id = entity2_id
-            else:
-                other_id = entity1_id
-
-            _other_name = (
-                rel_attrs.get("entity2_id")
-                if entity1_id == str(ls_id)
-                else rel_attrs.get("entity1_id")
+            other_id = (
+                entity2_id if entity1_id == str(ls_id) else entity1_id
             )
 
-            # We need the other entity's name. Check for it in attributes.
-            desc1 = rel_attrs.get("description1", "")
-            desc2 = rel_attrs.get("description2", "")
+            # Resolve name and type from included/fetched data.
+            other_attrs = included_map.get(other_id, {})
+            other_name = (
+                other_attrs.get("name")
+                or f"LittleSis entity {other_id}"
+            )
+            other_ext = other_attrs.get("primary_ext", "")
+            other_etype = _TYPE_MAP.get(other_ext, EntityType.ORGANIZATION)
 
-            # Build a minimal other entity — we don't have its full details.
             other_ent = Entity(
-                id=f"organization:littlesis:{other_id}",
-                entity_type=EntityType.ORGANIZATION,  # Default, may be person.
-                label=f"LittleSis entity {other_id}",
+                id=f"{other_etype.value}:littlesis:{other_id}",
+                entity_type=other_etype,
+                label=other_name,
                 properties={
                     "littlesis_id": other_id,
                     "url": f"https://littlesis.org/entities/{other_id}",
@@ -199,6 +224,8 @@ class LittleSisAdapter(ToolAdapter):
             )
 
             rel_props = {}
+            desc1 = rel_attrs.get("description1", "")
+            desc2 = rel_attrs.get("description2", "")
             if desc1:
                 rel_props["description1"] = desc1
             if desc2:
@@ -223,3 +250,34 @@ class LittleSisAdapter(ToolAdapter):
             rels.append((other_ent, rel))
 
         return entity, rels
+
+    async def _batch_fetch_entities(
+        self,
+        client: httpx.AsyncClient,
+        entity_ids: set[str],
+    ) -> dict[str, dict]:
+        """Fetch basic details for related entities by ID.
+
+        Returns a mapping of entity_id -> {"name": ..., "primary_ext": ...}.
+        Caps at 15 concurrent fetches for rate-limit friendliness.
+        """
+        results: dict[str, dict] = {}
+        ids = list(entity_ids)[:15]
+        sem = asyncio.Semaphore(5)
+
+        async def fetch(eid: str) -> None:
+            async with sem:
+                try:
+                    resp = await client.get(f"{_BASE}/entities/{eid}")
+                    resp.raise_for_status()
+                    data = resp.json().get("data", {})
+                    attrs = data.get("attributes", {})
+                    results[eid] = {
+                        "name": attrs.get("name", ""),
+                        "primary_ext": attrs.get("primary_ext", ""),
+                    }
+                except Exception:
+                    pass
+
+        await asyncio.gather(*(fetch(eid) for eid in ids))
+        return results

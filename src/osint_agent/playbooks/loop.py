@@ -96,8 +96,12 @@ async def run_investigation_loop(
     cfg = config or LoopConfig()
     state = LoopState()
 
-    # Use playbook-specific completeness criteria if available
-    if hasattr(playbook, "completeness_criteria"):
+    # Use playbook-specific completeness criteria as default,
+    # but only if the caller didn't explicitly override via config.
+    if (
+        hasattr(playbook, "completeness_criteria")
+        and cfg.completeness_criteria == dict(DEFAULT_COMPLETENESS)
+    ):
         cfg.completeness_criteria = playbook.completeness_criteria
 
     result = PlaybookResult(

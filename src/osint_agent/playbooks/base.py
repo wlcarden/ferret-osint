@@ -122,7 +122,7 @@ LEAD_TOOL_MAP: dict[str, list[tuple[str, callable]]] = {
         ("wayback_ga", lambda v: {"url": v}),
         ("crtsh", lambda v: {"domain": v}),
         ("dns_enum", lambda v: {"domain": v}),
-        ("builtwith", lambda v: {"url": v}),
+        ("builtwith", lambda v: {"domain": v}),
     ],
     "phone": [
         ("phoneinfoga", lambda v: {"phone_number": v}),
@@ -130,18 +130,18 @@ LEAD_TOOL_MAP: dict[str, list[tuple[str, callable]]] = {
     "person_name": [
         ("courtlistener", lambda v: {"name": v}),
         ("openfec", lambda v: {"query": v, "mode": "contributors"}),
-        ("littlesis", lambda v: {"query": v}),
+        ("littlesis", lambda v: {"name": v}),
         ("documentcloud", lambda v: {"query": v}),
         ("fara", lambda v: {"name": v}),
         ("congress", lambda v: {"query": v, "mode": "member"}),
         ("peoplesearch", lambda v: {"query": v}),
     ],
     "organization": [
-        ("littlesis", lambda v: {"query": v}),
+        ("littlesis", lambda v: {"name": v}),
         ("fara", lambda v: {"name": v}),
         ("documentcloud", lambda v: {"query": v}),
         ("muckrock", lambda v: {"query": v, "mode": "foia"}),
-        ("propublica_nonprofit", lambda v: {"query": v}),
+        ("propublica_nonprofit", lambda v: {"name": v}),
         ("crosslinked", lambda v: {"company": v}),
     ],
     "url": [
@@ -177,6 +177,28 @@ def extract_leads_from_findings(findings: list[Finding]) -> list[Lead]:
     return leads
 
 
+def _is_searchable_username(username: str) -> bool:
+    """Filter out platform-specific IDs that aren't useful as search seeds.
+
+    Maigret and other tools store numeric IDs, prefixed IDs (uid:123),
+    and URL fragments as 'username' properties. These waste API calls
+    when fed back into the loop.
+    """
+    # Pure numeric IDs (Steam IDs, Disqus IDs, etc.)
+    if username.isdigit():
+        return False
+    # Prefixed IDs like "uid:123", "id:456", "nickname:789", "username:foo"
+    if re.match(
+        r"^(uid|id|nickname|username|disqus_username|gravatar_username):",
+        username,
+    ):
+        return False
+    # Very long numeric-heavy strings (hashes, tokens)
+    if len(username) > 30 and sum(c.isdigit() for c in username) > len(username) * 0.6:
+        return False
+    return True
+
+
 def _entity_to_lead(entity: Entity) -> Lead | None:
     """Convert an entity to a lead if it represents a follow-up target."""
     etype = entity.entity_type
@@ -192,6 +214,8 @@ def _entity_to_lead(entity: Entity) -> Lead | None:
         )
 
     if etype == EntityType.USERNAME:
+        if not _is_searchable_username(entity.label):
+            return None
         return Lead(
             lead_type="username",
             value=entity.label,
@@ -208,7 +232,7 @@ def _entity_to_lead(entity: Entity) -> Lead | None:
             match = re.match(r"^(\S+)\s+on\s+", entity.label)
             if match:
                 username = match.group(1)
-        if username:
+        if username and _is_searchable_username(username):
             return Lead(
                 lead_type="username",
                 value=username,

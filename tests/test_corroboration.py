@@ -180,8 +180,8 @@ def test_confirmed_classification(policy):
     assert result.total_weight >= CONFIRMED_THRESHOLD
 
 
-def test_three_token_name_plus_employer_is_probable(policy):
-    """should classify specific name + employer as probable"""
+def test_three_token_name_plus_employer_is_confirmed(policy):
+    """should classify specific name + employer from different sources as confirmed"""
     e1 = _person(
         "person:a:1", "William Leighton Carden",
         employer="Acme Corp",
@@ -191,9 +191,9 @@ def test_three_token_name_plus_employer_is_probable(policy):
         employer="Acme Corp",
     )
     result = policy.evaluate(e1, e2)
-    # name(1.0) + employer(1.0) = 2.0
-    assert result.level == "probable"
-    assert result.total_weight == pytest.approx(2.0, abs=0.01)
+    # name(1.0) + source_diversity(1.0) + employer(1.0) = 3.0
+    assert result.level == "confirmed"
+    assert result.total_weight == pytest.approx(3.0, abs=0.01)
 
 
 def test_name_plus_city_plus_state_insufficient(policy):
@@ -283,6 +283,48 @@ def test_custom_thresholds():
 # Multiple factors accumulate
 # ------------------------------------------------------------------
 
+def test_source_diversity_bonus_for_distinctive_name(policy):
+    """should add source_diversity factor for 3-token names from different tools"""
+    e1 = _person("person:courtlistener:1", "Luigi Thomas Mangione")
+    e2 = _person("person:openfec:1", "Luigi Thomas Mangione")
+    result = policy.evaluate(e1, e2)
+    diversity_factors = [f for f in result.factors if f.field == "source_diversity"]
+    assert len(diversity_factors) == 1
+    assert diversity_factors[0].weight == WEIGHT_SEMI_UNIQUE
+    # name(1.0) + source_diversity(1.0) = 2.0 → probable
+    assert result.level == "probable"
+    assert result.total_weight == pytest.approx(2.0, abs=0.01)
+
+
+def test_no_source_diversity_for_common_name(policy):
+    """should not add source_diversity for 2-token names"""
+    e1 = _person("person:courtlistener:1", "John Smith")
+    e2 = _person("person:openfec:1", "John Smith")
+    result = policy.evaluate(e1, e2)
+    diversity_factors = [f for f in result.factors if f.field == "source_diversity"]
+    assert len(diversity_factors) == 0
+    # name(0.5) only → insufficient
+    assert result.level == "insufficient"
+
+
+def test_no_source_diversity_for_same_source(policy):
+    """should not add source_diversity when entities share a tool source"""
+    e1 = _person("person:fec:1", "Luigi Thomas Mangione")
+    e2 = _person("person:fec:2", "Luigi Thomas Mangione")
+    result = policy.evaluate(e1, e2)
+    diversity_factors = [f for f in result.factors if f.field == "source_diversity"]
+    assert len(diversity_factors) == 0
+
+
+def test_no_source_diversity_for_low_similarity(policy):
+    """should not add source_diversity when name similarity < 0.9"""
+    e1 = _person("person:courtlistener:1", "Luigi Thomas Mangione")
+    e2 = _person("person:openfec:1", "Luigi Thomas Mangione")
+    result = policy.evaluate(e1, e2, name_similarity=0.8)
+    diversity_factors = [f for f in result.factors if f.field == "source_diversity"]
+    assert len(diversity_factors) == 0
+
+
 def test_multiple_weak_factors_accumulate(policy):
     """should accumulate weak factors toward threshold"""
     e1 = _person(
@@ -294,6 +336,6 @@ def test_multiple_weak_factors_accumulate(policy):
         city="Vienna", state="VA", location="Virginia",
     )
     result = policy.evaluate(e1, e2)
-    # name(1.0) + city(0.5) + state(0.5) + location(0.5) = 2.5
-    assert result.level == "probable"
-    assert len(result.factors) == 4
+    # name(1.0) + source_diversity(1.0) + city(0.5) + state(0.5) + location(0.5) = 3.5
+    assert result.level == "confirmed"
+    assert len(result.factors) == 5

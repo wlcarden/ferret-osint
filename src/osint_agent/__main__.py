@@ -868,6 +868,7 @@ async def main_async(args):
         if getattr(args, "auto", False):
             from osint_agent.playbooks.loop import LoopConfig, run_investigation_loop
 
+            completeness = {} if getattr(args, "thorough", False) else None
             loop_cfg = LoopConfig(
                 max_iterations=getattr(args, "max_iterations", 20),
                 max_stale_rounds=getattr(args, "max_stale", 3),
@@ -877,6 +878,8 @@ async def main_async(args):
                 llm_model=getattr(args, "llm_model", None),
                 llm_base_url=getattr(args, "llm_base_url", None),
             )
+            if completeness is not None:
+                loop_cfg.completeness_criteria = completeness
             result = await run_investigation_loop(
                 playbook=pb,
                 seed=args.input,
@@ -1325,6 +1328,10 @@ def main():
     playbook_sub.add_argument(
         "--leads-per-round", type=int, default=3,
         help="Max leads to follow per iteration in auto mode (default: 3)",
+    )
+    playbook_sub.add_argument(
+        "--thorough", action="store_true",
+        help="Disable early completeness termination (follow all leads)",
     )
     playbook_sub.add_argument(
         "--llm-provider",

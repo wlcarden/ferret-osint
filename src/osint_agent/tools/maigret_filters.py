@@ -18,7 +18,7 @@ identifying sites that returned "Claimed" for all 6.
 # Confirmed by testing 6 unrelated usernames (2026-03-14):
 #   jitkadambrosia, josephjacob, wlcarden, williamcarden,
 #   leightoncarden, wcarden
-# All 9 sites below claimed all 6 usernames.
+# All 12 sites below claimed all 6 usernames.
 BLOCKLISTED_SITES: frozenset[str] = frozenset({
     "AdultFriendFinder",
     "authorSTREAM",
@@ -27,6 +27,9 @@ BLOCKLISTED_SITES: frozenset[str] = frozenset({
     "getmyuni",
     "hashnode",
     "Kaggle",
+    "Livemaster",
+    "Pbase",
+    "Studfile",
     "TechPowerUp",
     "Tom's guide",
 })

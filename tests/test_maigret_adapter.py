@@ -250,6 +250,7 @@ def test_blocklist_contains_known_offenders():
     """should contain all empirically confirmed false-positive sites"""
     expected = {
         "AdultFriendFinder", "authorSTREAM", "Bibsonomy", "Blu-ray",
-        "getmyuni", "hashnode", "Kaggle", "TechPowerUp", "Tom's guide",
+        "getmyuni", "hashnode", "Kaggle", "Livemaster", "Pbase",
+        "Studfile", "TechPowerUp", "Tom's guide",
     }
     assert expected == BLOCKLISTED_SITES

@@ -99,7 +99,7 @@ class NameToSurface(Playbook):
             ),
             ToolStep(
                 tool_name="littlesis",
-                kwargs={"query": seed},
+                kwargs={"name": seed},
                 description=f"Power network for '{seed}' (LittleSis)",
             ),
             ToolStep(
