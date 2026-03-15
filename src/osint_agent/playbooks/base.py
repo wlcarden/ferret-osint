@@ -187,11 +187,9 @@ def _is_searchable_username(username: str) -> bool:
     # Pure numeric IDs (Steam IDs, Disqus IDs, etc.)
     if username.isdigit():
         return False
-    # Prefixed IDs like "uid:123", "id:456", "nickname:789", "username:foo"
-    if re.match(
-        r"^(uid|id|nickname|username|disqus_username|gravatar_username):",
-        username,
-    ):
+    # Prefixed IDs like "uid:123", "id:456", "nickname:789",
+    # "username:foo", "imgur_username:bar" — any *_username: prefix
+    if re.match(r"^(uid|id|nickname|\w*username):", username):
         return False
     # Very long numeric-heavy strings (hashes, tokens)
     if len(username) > 30 and sum(c.isdigit() for c in username) > len(username) * 0.6:
