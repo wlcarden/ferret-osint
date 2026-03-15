@@ -188,8 +188,12 @@ async def _run_steps(
     tasks = []
     for step in steps:
         tool = registry.get(step.tool_name)
-        if not tool or not tool.is_available():
-            _print(f"  SKIP {step.description} ({step.tool_name} not available)")
+        if not tool:
+            _print(f"  SKIP {step.description} ({step.tool_name} not registered)")
+            continue
+        ok, reason = tool.check_availability()
+        if not ok:
+            _print(f"  SKIP {step.description} — {reason}")
             continue
         _print(f"  RUN  {step.description}")
         tasks.append(_run_one_step(tool, step, cache))

@@ -28,13 +28,8 @@ class CrossLinkedAdapter(ToolAdapter):
     """Enumerate employee names at a company via search engine LinkedIn dorks."""
 
     name = "crosslinked"
-
-    def is_available(self) -> bool:
-        try:
-            import crosslinked  # noqa: F401
-            return True
-        except ImportError:
-            return False
+    required_package = "crosslinked"
+    install_hint = "pip install crosslinked"
 
     async def run(self, company: str, **kwargs) -> Finding:
         """Search for LinkedIn profiles associated with a company.

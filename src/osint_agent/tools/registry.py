@@ -135,13 +135,22 @@ class ToolRegistry:
             if name in self._adapters and self._adapters[name].is_available()
         ]
 
+    def check_all(self) -> dict[str, tuple[bool, str]]:
+        """Check availability with reasons for all registered tools."""
+        return {
+            name: adapter.check_availability()
+            for name, adapter in self._adapters.items()
+        }
+
     def summary(self) -> str:
-        """Human-readable summary of tool availability."""
-        avail = self.available()
+        """Human-readable summary of tool availability with diagnostics."""
+        checks = self.check_all()
         lines = ["Tool Registry:"]
-        for name, installed in sorted(avail.items()):
-            status = "ready" if installed else "not available"
-            lines.append(f"  {name}: {status}")
-        ready = sum(1 for v in avail.values() if v)
-        lines.append(f"\n{ready}/{len(avail)} tools available")
+        for name, (ok, reason) in sorted(checks.items()):
+            if ok:
+                lines.append(f"  {name}: ready")
+            else:
+                lines.append(f"  {name}: NOT AVAILABLE — {reason}")
+        ready = sum(1 for ok, _ in checks.values() if ok)
+        lines.append(f"\n{ready}/{len(checks)} tools available")
         return "\n".join(lines)

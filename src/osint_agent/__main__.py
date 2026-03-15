@@ -952,7 +952,17 @@ async def main_async(args):
 def main():
     parser = argparse.ArgumentParser(
         prog="osint_agent",
-        description="OSINT Agent — investigative intelligence toolkit",
+        description="ferret-osint — investigative OSINT toolkit",
+        epilog=(
+            "Quickstart:\n"
+            "  1. status                        Check which tools are available\n"
+            "  2. playbook name_to_surface NAME  Run a structured investigation\n"
+            "  3. report --investigation-id N    Generate a report from findings\n"
+            "\n"
+            "For individual tools, run: osint_agent <tool> --help\n"
+            "Full docs: https://github.com/wlcarden/ferret-osint"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--memory",

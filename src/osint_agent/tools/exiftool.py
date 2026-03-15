@@ -1,7 +1,6 @@
 """ExifTool adapter — image/media metadata extraction."""
 
 import json
-import shutil
 
 from osint_agent.models import (
     Entity,
@@ -23,9 +22,8 @@ class ExifToolAdapter(ToolAdapter):
     """
 
     name = "exiftool"
-
-    def is_available(self) -> bool:
-        return shutil.which("exiftool") is not None
+    required_binary = "exiftool"
+    install_hint = "apt install libimage-exiftool-perl"
 
     async def run(self, file_path: str) -> Finding:
         """Extract metadata from an image or media file.

@@ -33,12 +33,11 @@ class CongressAdapter(ToolAdapter):
     """Search Congress.gov for members, bills, and legislative activity."""
 
     name = "congress"
+    required_env_key = "CONGRESS_API_KEY"
+    install_hint = "free key from api.congress.gov/sign-up"
 
     def __init__(self, timeout: int = 20):
         self.timeout = timeout
-
-    def is_available(self) -> bool:
-        return bool(os.environ.get("CONGRESS_API_KEY"))
 
     async def run(
         self,

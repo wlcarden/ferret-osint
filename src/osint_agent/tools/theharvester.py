@@ -1,7 +1,6 @@
 """theHarvester tool adapter — email and subdomain harvesting."""
 
 import json
-import shutil
 import tempfile
 from pathlib import Path
 
@@ -24,12 +23,11 @@ class TheHarvesterAdapter(ToolAdapter):
     """
 
     name = "theharvester"
+    required_binary = "theHarvester"
+    install_hint = "pip install git+https://github.com/laramies/theHarvester.git"
 
     def __init__(self, timeout: int = 120):
         self.timeout = timeout
-
-    def is_available(self) -> bool:
-        return shutil.which("theHarvester") is not None
 
     async def run(
         self,

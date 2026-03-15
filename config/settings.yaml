@@ -1,45 +1,14 @@
-# === OSINT Agent Configuration ===
-# Tool-specific settings, rate limits, and behavior.
-# API keys are in .env, not here.
+# === ferret-osint Configuration ===
+#
+# API keys belong in .env, not here.
+# Tool availability is auto-detected at runtime — no manual flags needed.
+# Run `python -m osint_agent status` to see which tools are available and why.
 
-# Rate limiting defaults per source (requests per minute)
-rate_limits:
-  default: 10
-  courtlistener: 5
-  openfec: 30
-  hunter_io: 2      # 25/month free tier — be conservative
-  numverify: 1       # 100/month free tier
-  shodan: 1          # very limited free tier
-  censys: 2
-  virustotal: 4      # 4/min hard limit
-
-# Data storage
+# Data directories
 storage:
-  graph_backend: neo4j   # neo4j | networkx (in-memory fallback)
   data_dir: ./data
-  evidence_dir: ./evidence
-  export_dir: ./exports
 
-# Tool availability flags — disable tools that aren't installed or configured
-tools:
-  maigret: true
-  sherlock: true
-  holehe: true
-  instaloader: true
-  praw: true
-  theharvester: true
-  edgartools: true
-  waybackpy: true
-  spiderfoot: false    # heavy — enable when needed
-  phoneinfoga: true
-  exiftool: true
-
-# Social media scraping
+# Social media settings
 social:
-  instagram:
-    require_login: true
-    rate_limit: 5        # requests per minute
   reddit:
-    user_agent: "osint-agent/0.1 (research)"
-  twitter:
-    enabled: false       # requires twscrape + account management
+    user_agent: "ferret-osint/0.1 (research)"

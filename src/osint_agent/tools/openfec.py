@@ -27,13 +27,11 @@ class OpenFECAdapter(ToolAdapter):
     """
 
     name = "openfec"
+    required_env_key = "OPENFEC_API_KEY"
 
     def __init__(self, timeout: int = 30):
         self.timeout = timeout
         self.api_key = os.getenv("OPENFEC_API_KEY", "")
-
-    def is_available(self) -> bool:
-        return bool(self.api_key)
 
     async def run(
         self,

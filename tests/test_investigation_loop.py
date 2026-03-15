@@ -249,6 +249,7 @@ async def test_loop_phase1_runs_steps():
     registry = MagicMock()
     tool = MagicMock()
     tool.is_available.return_value = True
+    tool.check_availability.return_value = (True, "ready")
     tool.safe_run = AsyncMock(return_value=finding)
     registry.get.return_value = tool
 
@@ -281,6 +282,7 @@ async def test_loop_stops_when_no_leads():
     registry = MagicMock()
     tool = MagicMock()
     tool.is_available.return_value = True
+    tool.check_availability.return_value = (True, "ready")
     tool.safe_run = AsyncMock(return_value=Finding(notes="empty"))
     registry.get.return_value = tool
 
@@ -343,6 +345,7 @@ async def test_loop_follows_leads():
     registry = MagicMock()
     tool = MagicMock()
     tool.is_available.return_value = True
+    tool.check_availability.return_value = (True, "ready")
     tool.safe_run = AsyncMock(side_effect=fake_run)
     registry.get.return_value = tool
 
@@ -403,6 +406,7 @@ async def test_loop_skips_tried_tools():
     registry = MagicMock()
     tool = MagicMock()
     tool.is_available.return_value = True
+    tool.check_availability.return_value = (True, "ready")
     tool.run = AsyncMock(return_value=finding)
     registry.get.return_value = tool
 
@@ -450,6 +454,7 @@ async def test_loop_detects_stale_rounds():
     registry = MagicMock()
     tool = MagicMock()
     tool.is_available.return_value = True
+    tool.check_availability.return_value = (True, "ready")
     tool.run = AsyncMock(return_value=finding)
     registry.get.return_value = tool
 

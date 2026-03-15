@@ -1,7 +1,6 @@
 """Maigret tool adapter — username search across 2500+ sites."""
 
 import json
-import shutil
 import tempfile
 from pathlib import Path
 
@@ -30,13 +29,12 @@ class MaigretAdapter(ToolAdapter):
     """Wraps the maigret CLI to search for usernames across platforms."""
 
     name = "maigret"
+    required_binary = "maigret"
+    install_hint = "pip install maigret"
 
     def __init__(self, timeout: int = 60, top_sites: int | None = None):
         self.timeout = timeout
         self.top_sites = top_sites
-
-    def is_available(self) -> bool:
-        return shutil.which("maigret") is not None
 
     async def run(self, username: str) -> Finding:
         """Search for a username across platforms.

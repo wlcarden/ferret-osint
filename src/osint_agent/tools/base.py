@@ -4,6 +4,8 @@ import abc
 import asyncio
 import json
 import logging
+import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -93,17 +95,64 @@ class ToolAdapter(abc.ABC):
     1. Checking if the tool is installed/available
     2. Running the tool with appropriate arguments
     3. Parsing output into Finding objects
+
+    Subclasses should set class-level metadata for availability diagnostics:
+        required_binary:  System binary name (e.g., "exiftool")
+        required_env_key: Environment variable for API key (e.g., "COURTLISTENER_API_KEY")
+        required_package: Python package to import (e.g., "yt_dlp")
+        install_hint:     Human-readable install instruction
     """
 
     name: str = "base"
+
+    # Availability metadata — set in subclasses for automatic diagnostics
+    required_binary: str | None = None
+    required_env_key: str | None = None
+    required_package: str | None = None
+    install_hint: str | None = None
 
     @abc.abstractmethod
     async def run(self, **kwargs) -> Finding:
         """Execute the tool and return normalized findings."""
 
-    @abc.abstractmethod
     def is_available(self) -> bool:
-        """Check if this tool is installed and configured."""
+        """Check if this tool is installed and configured.
+
+        Default implementation checks class-level metadata (required_binary,
+        required_env_key, required_package). Subclasses with custom logic
+        can override.
+        """
+        if self.required_binary and not shutil.which(self.required_binary):
+            return False
+        if self.required_env_key and not os.environ.get(self.required_env_key):
+            return False
+        if self.required_package:
+            try:
+                __import__(self.required_package)
+            except ImportError:
+                return False
+        return True
+
+    def check_availability(self) -> tuple[bool, str]:
+        """Check availability with a human-readable reason.
+
+        Returns (is_available, reason) where reason explains why
+        the tool isn't available or confirms it's ready.
+        """
+        if self.required_binary and not shutil.which(self.required_binary):
+            hint = self.install_hint or f"install {self.required_binary}"
+            return False, f"binary not found: {self.required_binary} ({hint})"
+        if self.required_env_key and not os.environ.get(self.required_env_key):
+            return False, f"missing env var: {self.required_env_key}"
+        if self.required_package:
+            try:
+                __import__(self.required_package)
+            except ImportError:
+                hint = self.install_hint or f"pip install {self.required_package}"
+                return False, f"package not installed: {self.required_package} ({hint})"
+        if not self.is_available():
+            return False, "not available (check tool-specific requirements)"
+        return True, "ready"
 
     async def safe_run(self, **kwargs) -> Finding:
         """Execute run() with automatic error recovery.
@@ -121,6 +170,9 @@ class ToolAdapter(abc.ABC):
                 status=exc.response.status_code,
                 headers=dict(exc.response.headers),
             )
+            # Add specific env var hint for auth errors
+            if exc.response.status_code in (401, 403) and self.required_env_key:
+                error.suggestion = f"Set {self.required_env_key} in .env"
             return Finding(
                 notes=f"{self.name}: HTTP {exc.response.status_code}",
                 error=error,

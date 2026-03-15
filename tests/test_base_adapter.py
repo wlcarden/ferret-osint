@@ -1,7 +1,7 @@
-"""Tests for ToolAdapter.safe_run() error recovery."""
+"""Tests for ToolAdapter — safe_run() error recovery and check_availability() diagnostics."""
 
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -17,9 +17,6 @@ class _DummyAdapter(ToolAdapter):
 
     def __init__(self, run_fn=None):
         self._run_fn = run_fn
-
-    def is_available(self) -> bool:
-        return True
 
     async def run(self, **kwargs) -> Finding:
         if self._run_fn:
@@ -187,3 +184,110 @@ async def test_safe_run_error_includes_tool_name():
     finding = await adapter.safe_run()
 
     assert finding.error.tool == "dummy"
+
+
+@pytest.mark.asyncio
+async def test_safe_run_401_includes_env_key_hint():
+    """should include specific env var in auth error when required_env_key is set"""
+
+    class _KeyAdapter(_DummyAdapter):
+        required_env_key = "MY_SECRET_KEY"
+
+    async def _raise(**kw):
+        raise _make_http_status_error(401)
+
+    adapter = _KeyAdapter(run_fn=_raise)
+    finding = await adapter.safe_run()
+
+    assert finding.error.category == ErrorCategory.AUTH
+    assert "MY_SECRET_KEY" in finding.error.suggestion
+
+
+# --- check_availability() diagnostics ---
+
+
+class _BinaryAdapter(ToolAdapter):
+    name = "needs_binary"
+    required_binary = "nonexistent_binary_xyz"
+    install_hint = "apt install nonexistent"
+
+    async def run(self, **kwargs):
+        return Finding(notes="ok")
+
+
+class _EnvAdapter(ToolAdapter):
+    name = "needs_key"
+    required_env_key = "FAKE_API_KEY_XYZ"
+
+    async def run(self, **kwargs):
+        return Finding(notes="ok")
+
+
+class _PackageAdapter(ToolAdapter):
+    name = "needs_pkg"
+    required_package = "nonexistent_package_xyz"
+    install_hint = "pip install nonexistent"
+
+    async def run(self, **kwargs):
+        return Finding(notes="ok")
+
+
+class _NoRequirements(ToolAdapter):
+    name = "always_ready"
+
+    async def run(self, **kwargs):
+        return Finding(notes="ok")
+
+
+def test_check_availability_missing_binary():
+    """should report missing binary with install hint"""
+    adapter = _BinaryAdapter()
+    ok, reason = adapter.check_availability()
+    assert not ok
+    assert "nonexistent_binary_xyz" in reason
+    assert "apt install" in reason
+
+
+def test_check_availability_missing_env_key():
+    """should report missing env var by name"""
+    with patch.dict("os.environ", {}, clear=True):
+        adapter = _EnvAdapter()
+        ok, reason = adapter.check_availability()
+        assert not ok
+        assert "FAKE_API_KEY_XYZ" in reason
+
+
+def test_check_availability_missing_package():
+    """should report missing package with install hint"""
+    adapter = _PackageAdapter()
+    ok, reason = adapter.check_availability()
+    assert not ok
+    assert "nonexistent_package_xyz" in reason
+    assert "pip install" in reason
+
+
+def test_check_availability_ready():
+    """should return ready when no requirements are set"""
+    adapter = _NoRequirements()
+    ok, reason = adapter.check_availability()
+    assert ok
+    assert reason == "ready"
+
+
+def test_is_available_default_binary():
+    """should return False when required binary is missing"""
+    adapter = _BinaryAdapter()
+    assert not adapter.is_available()
+
+
+def test_is_available_default_env_key():
+    """should return False when required env var is missing"""
+    with patch.dict("os.environ", {}, clear=True):
+        adapter = _EnvAdapter()
+        assert not adapter.is_available()
+
+
+def test_is_available_default_no_requirements():
+    """should return True when no requirements"""
+    adapter = _NoRequirements()
+    assert adapter.is_available()

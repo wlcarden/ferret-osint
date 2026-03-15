@@ -1,7 +1,6 @@
 """PhoneInfoga tool adapter — phone number intelligence."""
 
 import json
-import shutil
 
 from osint_agent.models import (
     Entity,
@@ -20,9 +19,8 @@ class PhoneInfogaAdapter(ToolAdapter):
     """
 
     name = "phoneinfoga"
-
-    def is_available(self) -> bool:
-        return shutil.which("phoneinfoga") is not None
+    required_binary = "phoneinfoga"
+    install_hint = "see scripts/bootstrap.sh or github.com/sundowndev/phoneinfoga"
 
     async def run(self, phone_number: str) -> Finding:
         """Scan a phone number for available information.

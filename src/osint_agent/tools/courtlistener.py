@@ -27,13 +27,11 @@ class CourtListenerAdapter(ToolAdapter):
     """
 
     name = "courtlistener"
+    required_env_key = "COURTLISTENER_API_KEY"
 
     def __init__(self, timeout: int = 30):
         self.timeout = timeout
         self.api_key = os.getenv("COURTLISTENER_API_KEY", "")
-
-    def is_available(self) -> bool:
-        return bool(self.api_key)
 
     def _headers(self) -> dict:
         return {"Authorization": f"Token {self.api_key}"}

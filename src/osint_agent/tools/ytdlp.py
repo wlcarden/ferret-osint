@@ -27,13 +27,8 @@ class YtDlpAdapter(ToolAdapter):
     """Extract metadata from YouTube channels, videos, and playlists."""
 
     name = "yt-dlp"
-
-    def is_available(self) -> bool:
-        try:
-            import yt_dlp  # noqa: F401
-            return True
-        except ImportError:
-            return False
+    required_package = "yt_dlp"
+    install_hint = "pip install yt-dlp"
 
     async def run(self, url: str, **kwargs) -> Finding:
         """Extract metadata from a video/channel URL.

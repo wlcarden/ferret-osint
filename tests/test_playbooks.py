@@ -47,6 +47,7 @@ def mock_registry():
         tool = MagicMock()
         tool.name = name
         tool.is_available.return_value = True
+        tool.check_availability.return_value = (True, "ready")
         tool.safe_run = AsyncMock(return_value=finding)
         tool.search_party = AsyncMock(return_value=finding)
         return tool
@@ -501,6 +502,7 @@ async def test_run_playbook_skips_unavailable_tools(store):
     unavailable_tool = MagicMock()
     unavailable_tool.name = "maigret"
     unavailable_tool.is_available.return_value = False
+    unavailable_tool.check_availability.return_value = (False, "binary not found: maigret")
     registry.get.return_value = unavailable_tool
 
     pb = UsernameToldentity()
