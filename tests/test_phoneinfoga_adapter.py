@@ -2,12 +2,12 @@
 
 import json
 import subprocess
-
-import pytest
 from unittest.mock import patch
 
-from osint_agent.tools.phoneinfoga import PhoneInfogaAdapter
+import pytest
+
 from osint_agent.models import EntityType
+from osint_agent.tools.phoneinfoga import PhoneInfogaAdapter
 
 
 @pytest.fixture

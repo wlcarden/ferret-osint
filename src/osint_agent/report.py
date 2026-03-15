@@ -140,6 +140,7 @@ class ReportGenerator:
 
         sections = [
             self._render_header(investigation_name),
+            self._render_toc(entities, aka_rels, other_rels, leads),
             self._render_summary(entities, relationships, aka_rels, leads),
             self._render_subject_profiles(entities, aka_rels),
             self._render_attribution(entities, aka_rels),
@@ -150,14 +151,51 @@ class ReportGenerator:
             self._render_source_index(entities),
         ]
 
-        return "\n\n".join(s for s in sections if s)
+        # Join non-empty sections with horizontal rules
+        non_empty = [s for s in sections if s]
+        return "\n\n---\n\n".join(non_empty)
 
     # ── Section renderers ───────────────────────────────────────────
 
     def _render_header(self, name: str) -> str:
         now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-        title = f"# Investigation Report: {name}" if name else "# Investigation Report"
+        title = (
+            f"# Investigation Report: {name}"
+            if name else "# Investigation Report"
+        )
         return f"{title}\n\n*Generated: {now}*"
+
+    def _render_toc(
+        self,
+        entities: list[Entity],
+        aka_rels: list[Relationship],
+        other_rels: list[Relationship],
+        leads: list[dict],
+    ) -> str:
+        """Render a table of contents linking to report sections."""
+        items = ["- [Executive Summary](#executive-summary)"]
+        persons = [
+            e for e in entities
+            if e.entity_type == EntityType.PERSON
+        ]
+        if persons:
+            items.append(
+                "- [Subject Profiles](#subject-profiles)",
+            )
+        if aka_rels:
+            items.append(
+                "- [Entity Attribution](#entity-attribution)",
+            )
+        if entities:
+            items.append(
+                "- [Entities by Type](#entities-by-type)",
+            )
+        if other_rels:
+            items.append("- [Relationships](#relationships)")
+        if leads:
+            items.append("- [Lead Queue](#lead-queue)")
+        items.append("- [Source Index](#source-index)")
+        return "\n".join(items)
 
     def _render_summary(
         self,
@@ -413,10 +451,8 @@ class ReportGenerator:
         ]
 
         for key, rejections in sorted(rejection_groups.items()):
-            # Use the first pair as the representative example
             e1, e2, result = rejections[0]
 
-            # Collect all distinct sources involved
             sources_in_group = set()
             for r_e1, r_e2, _ in rejections:
                 sources_in_group.add(_extract_source(r_e1.id))
@@ -426,33 +462,40 @@ class ReportGenerator:
             pair_count = len(rejections)
             if pair_count == 1:
                 lines.append(
-                    f"**{e1.label}** ({_extract_source(e1.id)})"
-                    f" ↔ **{e2.label}** ({_extract_source(e2.id)})"
-                    f" — NOT LINKED (weight: {result.total_weight},"
-                    f" threshold: {self.policy.probable_threshold})"
+                    f"> **{e1.label}** ({_extract_source(e1.id)})"
+                    f" <-> **{e2.label}** ({_extract_source(e2.id)})"
+                    f" -- NOT LINKED (weight: {result.total_weight},"
+                    f" threshold: {self.policy.probable_threshold})",
                 )
             else:
                 lines.append(
-                    f"**\"{key}\"** — {pair_count} cross-source pairs"
-                    f" NOT LINKED (best weight: {result.total_weight},"
-                    f" threshold: {self.policy.probable_threshold})"
+                    f"> **\"{key}\"** -- {pair_count} cross-source"
+                    f" pairs NOT LINKED"
+                    f" (best weight: {result.total_weight},"
+                    f" threshold: {self.policy.probable_threshold})",
                 )
                 lines.append(
-                    f"  - Sources: {', '.join(sorted(sources_in_group))}"
+                    f"> Sources:"
+                    f" {', '.join(sorted(sources_in_group))}",
                 )
 
             if result.factors:
-                lines.append("  - Factors present:")
+                lines.append("> Factors present:")
                 for f in result.factors:
                     lines.append(
-                        f"    - {f.field}: {f.category} ({f.weight})"
+                        f">   - {f.field}:"
+                        f" {f.category} ({f.weight})",
                     )
             else:
-                lines.append("  - No corroborating factors found")
+                lines.append(
+                    "> No corroborating factors found",
+                )
 
-            missing = self._identify_missing_factors(e1, e2, result)
+            missing = self._identify_missing_factors(
+                e1, e2, result,
+            )
             if missing:
-                lines.append(f"  - Missing: {missing}")
+                lines.append(f"> Missing: {missing}")
 
         return "\n".join(lines)
 
@@ -501,7 +544,7 @@ class ReportGenerator:
             ))
 
             lines.append("")
-            lines.append(f"### {etype.upper()} ({len(group)})")
+            lines.append(f"### {etype.title()} ({len(group)})")
             lines.append("")
             for e in group:
                 source_tools = ", ".join(s.tool for s in e.sources)
@@ -551,7 +594,19 @@ class ReportGenerator:
                 tgt = entity_map.get(r.target_id)
                 src_label = src.label if src else r.source_id
                 tgt_label = tgt.label if tgt else r.target_id
-                lines.append(f"- {src_label} → {tgt_label}")
+                # Show key properties inline
+                prop_parts = []
+                for k, v in sorted(r.properties.items()):
+                    if k in ("raw_data",) or v is None:
+                        continue
+                    prop_parts.append(f"{k}: {v}")
+                props_str = (
+                    f" ({', '.join(prop_parts)})"
+                    if prop_parts else ""
+                )
+                lines.append(
+                    f"- {src_label} -> {tgt_label}{props_str}",
+                )
             if len(group) > 50:
                 lines.append(f"- *... and {len(group) - 50} more*")
 

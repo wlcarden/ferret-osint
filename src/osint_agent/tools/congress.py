@@ -262,7 +262,7 @@ class CongressAdapter(ToolAdapter):
         title = bill.get("title", f"{bill_type} {bill_num}")
 
         bill_id = f"{bill_type.lower()}{bill_num}-{congress}"
-        url = bill.get("url", "")
+        _url = bill.get("url", "")
         congress_url = f"https://www.congress.gov/bill/{congress}th-congress/{_bill_type_path(bill_type)}/{bill_num}"
 
         props = {

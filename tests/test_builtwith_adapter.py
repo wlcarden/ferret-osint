@@ -1,11 +1,12 @@
 """Tests for the BuiltWith adapter — website technology fingerprinting."""
 
 import sys
-import pytest
 from unittest.mock import MagicMock, patch
 
-from osint_agent.tools.builtwith_adapter import BuiltWithAdapter
+import pytest
+
 from osint_agent.models import EntityType
+from osint_agent.tools.builtwith_adapter import BuiltWithAdapter
 
 
 @pytest.fixture

@@ -1,10 +1,11 @@
 """Tests for the CourtListener adapter — federal court records."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from osint_agent.tools.courtlistener import CourtListenerAdapter
+import pytest
+
 from osint_agent.models import EntityType, RelationType
+from osint_agent.tools.courtlistener import CourtListenerAdapter
 
 
 @pytest.fixture
@@ -202,7 +203,7 @@ async def test_search_party_uses_quoted_name(adapter):
 def test_docket_entity_id_format(adapter, mock_docket_response):
     """Entity IDs should follow document:cl:<docket_id> pattern."""
     # Direct construction test
-    entity = adapter._search_dockets.__code__  # just verify the pattern from fixture
+    _entity = adapter._search_dockets.__code__  # just verify the pattern from fixture
     # The actual ID check is via the integration test above
     pass
 

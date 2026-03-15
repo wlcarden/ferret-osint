@@ -1,12 +1,12 @@
 """Tests for the MuckRock adapter — FOIA request and agency search."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 
-from osint_agent.tools.muckrock import MuckRockAdapter
 from osint_agent.models import EntityType
+from osint_agent.tools.muckrock import MuckRockAdapter
 
 
 @pytest.fixture

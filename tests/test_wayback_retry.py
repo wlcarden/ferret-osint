@@ -1,7 +1,6 @@
 """Tests for Wayback Machine adapter retry/backoff logic."""
 
 from unittest.mock import MagicMock, patch
-from urllib.error import HTTPError
 
 import pytest
 

@@ -1,11 +1,12 @@
 """Tests for the Wayback Machine adapter."""
 
 import sys
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from osint_agent.tools.wayback import WaybackAdapter, _is_rate_limit
+import pytest
+
 from osint_agent.models import EntityType
+from osint_agent.tools.wayback import WaybackAdapter, _is_rate_limit
 
 
 @pytest.fixture

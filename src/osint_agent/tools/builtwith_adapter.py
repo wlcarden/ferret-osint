@@ -41,6 +41,7 @@ class BuiltWithAdapter(ToolAdapter):
             domain: Domain or URL to fingerprint.
         """
         import asyncio
+
         import builtwith
 
         url = domain if domain.startswith("http") else f"https://{domain}"

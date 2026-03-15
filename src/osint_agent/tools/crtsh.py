@@ -41,6 +41,7 @@ class CrtshAdapter(ToolAdapter):
             domain: Base domain to search (e.g., "example.com").
         """
         import asyncio
+
         from pycrtsh import Crtsh
 
         def _query():

@@ -59,7 +59,11 @@ def _sample_maigret_output():
 def test_parse_creates_username_entity():
     adapter = MaigretAdapter()
     finding = adapter._parse_results("testuser", _sample_maigret_output())
-    usernames = [e for e in finding.entities if e.entity_type == EntityType.USERNAME and e.id == "username:testuser"]
+    usernames = [
+        e for e in finding.entities
+        if e.entity_type == EntityType.USERNAME
+        and e.id == "username:testuser"
+    ]
     assert len(usernames) == 1
     assert usernames[0].label == "testuser"
 

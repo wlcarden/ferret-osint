@@ -1,6 +1,6 @@
 """Tests for the tool registry."""
 
-from osint_agent.tools.registry import ToolRegistry, INPUT_ROUTING
+from osint_agent.tools.registry import INPUT_ROUTING, ToolRegistry
 
 
 def test_registry_creates_all_adapters():
@@ -36,7 +36,10 @@ def test_registry_get_nonexistent():
 
 
 def test_input_routing_covers_expected_types():
-    expected = {"username", "email", "phone", "domain", "company", "person_name", "url", "ip", "police_agency", "image_file"}
+    expected = {
+        "username", "email", "phone", "domain", "company",
+        "person_name", "url", "ip", "police_agency", "image_file",
+    }
     assert set(INPUT_ROUTING.keys()) == expected
 
 

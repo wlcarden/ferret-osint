@@ -1,16 +1,17 @@
 """Tests for the Gravatar adapter — email to identity bridge."""
 
 import hashlib
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from osint_agent.models import EntityType, RelationType
 from osint_agent.tools.gravatar import (
     GravatarAdapter,
-    _identify_platform,
     _extract_username_from_url,
+    _identify_platform,
     _slugify,
 )
-from osint_agent.models import EntityType, RelationType
 
 
 @pytest.fixture
@@ -251,7 +252,7 @@ async def test_run_hashes_email(adapter):
 
 def test_registered_in_registry():
     """should be registered and routable by email input type"""
-    from osint_agent.tools.registry import ToolRegistry, INPUT_ROUTING
+    from osint_agent.tools.registry import INPUT_ROUTING, ToolRegistry
 
     assert "gravatar" in INPUT_ROUTING["email"]
     registry = ToolRegistry()

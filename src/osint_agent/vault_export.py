@@ -11,7 +11,6 @@ from pathlib import Path
 
 from osint_agent.models import Entity, Relationship, Source
 
-
 # Characters illegal or problematic in filenames across OS + Obsidian.
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*#^[\]{}]')
 # Collapse multiple whitespace runs.

@@ -1,10 +1,11 @@
 """Tests for the Steam Community adapter."""
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from osint_agent.tools.steam import SteamAdapter, _xml_text
+import pytest
+
 from osint_agent.models import EntityType, RelationType
+from osint_agent.tools.steam import SteamAdapter, _xml_text
 
 
 @pytest.fixture
@@ -191,7 +192,7 @@ async def test_run_success(adapter):
 
 def test_registered_in_registry():
     """should be registered and routable by username input type"""
-    from osint_agent.tools.registry import ToolRegistry, INPUT_ROUTING
+    from osint_agent.tools.registry import INPUT_ROUTING, ToolRegistry
 
     assert "steam" in INPUT_ROUTING["username"]
     registry = ToolRegistry()

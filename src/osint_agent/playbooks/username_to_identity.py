@@ -13,7 +13,7 @@ Tool sequence:
 """
 
 from osint_agent.models import EntityType
-from osint_agent.playbooks.base import Lead, Playbook, ToolStep
+from osint_agent.playbooks.base import Playbook, ToolStep
 
 
 class UsernameToldentity(Playbook):

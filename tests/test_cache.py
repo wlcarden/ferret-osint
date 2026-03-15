@@ -3,7 +3,7 @@
 import pytest
 import pytest_asyncio
 
-from osint_agent.cache import ToolCache, _make_input_hash, _cache_key
+from osint_agent.cache import ToolCache, _cache_key, _make_input_hash
 from osint_agent.models import Entity, EntityType, Finding, Source
 
 

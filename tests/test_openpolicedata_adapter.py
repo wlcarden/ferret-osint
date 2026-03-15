@@ -1,9 +1,9 @@
 """Tests for the OpenPoliceData adapter — US police incident data."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from osint_agent.models import EntityType, RelationType
 from osint_agent.tools.openpolicedata import OpenPoliceDataAdapter, _slug

@@ -37,9 +37,9 @@ class CrossLinkedAdapter(ToolAdapter):
         Args:
             company: Company or organization name.
         """
-        import tempfile
         import csv
         import os
+        import tempfile
 
         # CrossLinked writes to a file. We use a temp file and parse it.
         with tempfile.NamedTemporaryFile(

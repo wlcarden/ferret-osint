@@ -2,11 +2,6 @@
 
 import pytest
 
-from osint_agent.graph.corroboration import (
-    WEIGHT_SEMI_UNIQUE,
-    WEIGHT_UNIQUE,
-    WEIGHT_WEAK,
-)
 from osint_agent.models import (
     Entity,
     EntityType,
@@ -313,8 +308,8 @@ def test_entities_grouped_by_type(gen):
         _account("account:a:1", "jane_doe on GitHub", platform="github"),
     ]
     report = gen.generate_from_data(entities, [])
-    assert "### PERSON (1)" in report
-    assert "### ACCOUNT (1)" in report
+    assert "### Person (1)" in report
+    assert "### Account (1)" in report
 
 
 def test_entities_show_source_tool(gen):
@@ -340,7 +335,7 @@ def test_relationships_grouped_by_type(gen):
     rel = _has_email_rel(e1.id, email.id)
     report = gen.generate_from_data([e1, email], [rel])
     assert "### has_email (1)" in report
-    assert "Jane → jane@test.com" in report
+    assert "Jane -> jane@test.com" in report
 
 
 def test_aka_rels_excluded_from_relationships_section(gen):
@@ -360,7 +355,11 @@ def test_aka_rels_excluded_from_relationships_section(gen):
 def test_leads_rendered_as_table(gen):
     """should render leads as a markdown table"""
     leads = [
-        {"lead_type": "email", "value": "a@b.com", "score": 0.8, "status": "pending", "notes": "found via holehe"},
+        {
+            "lead_type": "email", "value": "a@b.com",
+            "score": 0.8, "status": "pending",
+            "notes": "found via holehe",
+        },
     ]
     report = gen.generate_from_data([], [], leads=leads)
     assert "## Lead Queue" in report
@@ -371,8 +370,14 @@ def test_leads_rendered_as_table(gen):
 def test_leads_sorted_by_score(gen):
     """should sort leads by score descending"""
     leads = [
-        {"lead_type": "email", "value": "low@test.com", "score": 0.3, "status": "pending", "notes": ""},
-        {"lead_type": "email", "value": "high@test.com", "score": 0.9, "status": "pending", "notes": ""},
+        {
+            "lead_type": "email", "value": "low@test.com",
+            "score": 0.3, "status": "pending", "notes": "",
+        },
+        {
+            "lead_type": "email", "value": "high@test.com",
+            "score": 0.9, "status": "pending", "notes": "",
+        },
     ]
     report = gen.generate_from_data([], [], leads=leads)
     high_pos = report.index("high@test.com")
@@ -499,7 +504,7 @@ def test_nevada_scenario(gen):
     # candidates section only shows same-normalized-name pairs.
     # Both should appear in Entities by Type regardless.
     assert "William Carden" in report
-    assert "PERSON (2)" in report
+    assert "Person (2)" in report
 
 
 def test_linked_entities_show_full_attribution(gen):

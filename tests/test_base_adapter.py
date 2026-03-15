@@ -1,7 +1,7 @@
 """Tests for ToolAdapter — safe_run() error recovery and check_availability() diagnostics."""
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest

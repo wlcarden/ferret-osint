@@ -1,7 +1,8 @@
 """Tests for the people search adapter."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from osint_agent.tools.peoplesearch import (
     PeopleSearchAdapter,
@@ -13,7 +14,6 @@ from osint_agent.tools.peoplesearch import (
     _spokeo_person_to_record,
     _try_parse,
 )
-
 
 # ------------------------------------------------------------------
 # Name parsing
@@ -378,7 +378,7 @@ async def test_run_with_scraped_data():
 
 def test_registry_includes_peoplesearch():
     """should be registered and routed for person_name input type"""
-    from osint_agent.tools.registry import ToolRegistry, INPUT_ROUTING
+    from osint_agent.tools.registry import INPUT_ROUTING, ToolRegistry
 
     assert "peoplesearch" in INPUT_ROUTING["person_name"]
     registry = ToolRegistry()

@@ -3,27 +3,45 @@
 Scans entity and relationship properties for known temporal keys (filing dates,
 registration dates, account creation timestamps, etc.), normalizes heterogeneous
 date formats, and renders as markdown or self-contained HTML.
+
+Supports precision from YEAR down to SUBSECOND (~5 decimal places) for
+reconstructing event sequences where timing matters (e.g., incident timelines).
 """
 
 import calendar
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from enum import Enum
 
-from osint_agent.models import Entity, Relationship
+from osint_agent.models import Entity, Relationship, RelationType
 from osint_agent.report import _reconstruct_entity, _reconstruct_relationship
+from osint_agent.theme import type_colors_js
 
 
 class DatePrecision(Enum):
-    DAY = "day"
-    MONTH = "month"
+    """Temporal precision levels, coarsest to finest."""
+
     YEAR = "year"
+    MONTH = "month"
+    DAY = "day"
+    SECOND = "second"
+    SUBSECOND = "subsecond"
+
+
+# Ordered list for comparison (coarsest → finest).
+_PRECISION_ORDER = [
+    DatePrecision.YEAR,
+    DatePrecision.MONTH,
+    DatePrecision.DAY,
+    DatePrecision.SECOND,
+    DatePrecision.SUBSECOND,
+]
 
 
 @dataclass
 class TimelineEvent:
-    date: date
+    timestamp: datetime
     precision: DatePrecision
     entity_id: str
     entity_label: str
@@ -36,6 +54,7 @@ class TimelineEvent:
 # Map property key -> human-readable event label.
 # Only keys listed here are recognized as temporal.
 TEMPORAL_KEYS: dict[str, str] = {
+    # OSINT-specific adapter keys
     "filing_date":        "SEC filing",
     "latest_action_date": "Congressional action",
     "patent_date":        "Patent issued",
@@ -51,6 +70,11 @@ TEMPORAL_KEYS: dict[str, str] = {
     "created_at":         "Created",
     "timestamp":          "Archived",
     "award_year":         "SBIR award",
+    # Generic keys for manual/event-centric data
+    "event_time":         "Event",
+    "occurred_at":        "Occurred",
+    "reported_at":        "Reported",
+    "detected_at":        "Detected",
 }
 
 
@@ -58,16 +82,27 @@ TEMPORAL_KEYS: dict[str, str] = {
 # Date parsing
 # ---------------------------------------------------------------
 
-def parse_temporal_value(raw) -> tuple[date, DatePrecision] | None:
-    """Parse a temporal property value into (date, precision).
+def parse_temporal_value(raw) -> tuple[datetime, DatePrecision] | None:
+    """Parse a temporal property value into (datetime, precision).
 
     Handles ISO datetime, YYYY-MM-DD, YYYY-MM, YYYY, and Unix timestamps.
     Returns None for unparseable values.
+
+    Precision rules:
+    - ISO datetime with fractional seconds → SUBSECOND
+    - ISO datetime without fractional seconds → SECOND
+    - YYYY-MM-DD → DAY
+    - YYYY-MM → MONTH
+    - YYYY → YEAR
+    - Numeric float with fractional part → SUBSECOND
+    - Numeric integer → SECOND
     """
     if isinstance(raw, (int, float)):
         try:
             dt = datetime.fromtimestamp(raw, tz=UTC)
-            return (dt.date(), DatePrecision.DAY)
+            has_frac = isinstance(raw, float) and raw != int(raw)
+            prec = DatePrecision.SUBSECOND if has_frac else DatePrecision.SECOND
+            return (dt, prec)
         except (OSError, ValueError, OverflowError):
             return None
 
@@ -76,12 +111,15 @@ def parse_temporal_value(raw) -> tuple[date, DatePrecision] | None:
 
     raw = raw.strip()
 
-    # ISO datetime: 2023-06-15T12:00:00Z or 2023-06-15T12:00:00+00:00
+    # ISO datetime: 2023-06-15T12:00:00Z or 2023-06-15T01:23:40.12345+00:00
     if "T" in raw:
         try:
             cleaned = raw.replace("Z", "+00:00")
             dt = datetime.fromisoformat(cleaned)
-            return (dt.date(), DatePrecision.DAY)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            prec = DatePrecision.SUBSECOND if dt.microsecond > 0 else DatePrecision.SECOND
+            return (dt, prec)
         except ValueError:
             pass
 
@@ -89,7 +127,8 @@ def parse_temporal_value(raw) -> tuple[date, DatePrecision] | None:
     parts = raw.split("-")
     if len(parts) == 3:
         try:
-            return (date.fromisoformat(raw), DatePrecision.DAY)
+            d = date.fromisoformat(raw)
+            return (datetime(d.year, d.month, d.day, tzinfo=UTC), DatePrecision.DAY)
         except ValueError:
             pass
 
@@ -98,7 +137,7 @@ def parse_temporal_value(raw) -> tuple[date, DatePrecision] | None:
         try:
             y, m = int(parts[0]), int(parts[1])
             if 1 <= m <= 12 and 1000 <= y <= 9999:
-                return (date(y, m, 1), DatePrecision.MONTH)
+                return (datetime(y, m, 1, tzinfo=UTC), DatePrecision.MONTH)
         except ValueError:
             pass
 
@@ -106,7 +145,7 @@ def parse_temporal_value(raw) -> tuple[date, DatePrecision] | None:
     if len(raw) == 4 and raw.isdigit():
         y = int(raw)
         if 1000 <= y <= 9999:
-            return (date(y, 1, 1), DatePrecision.YEAR)
+            return (datetime(y, 1, 1, tzinfo=UTC), DatePrecision.YEAR)
 
     return None
 
@@ -119,7 +158,12 @@ def extract_events(
     entities: list[Entity],
     relationships: list[Relationship],
 ) -> list[TimelineEvent]:
-    """Extract timeline events from entity/relationship temporal properties."""
+    """Extract timeline events from entity/relationship temporal properties.
+
+    Supports the ``{key}_label`` companion convention: if an entity has both
+    ``event_time`` and ``event_time_label``, the label value overrides the
+    generic description from TEMPORAL_KEYS.
+    """
     events: list[TimelineEvent] = []
 
     for entity in entities:
@@ -131,15 +175,17 @@ def extract_events(
             parsed = parse_temporal_value(val)
             if parsed is None:
                 continue
-            d, prec = parsed
+            ts, prec = parsed
+            # Companion label override: {key}_label property
+            desc = entity.properties.get(f"{key}_label", label)
             events.append(TimelineEvent(
-                date=d,
+                timestamp=ts,
                 precision=prec,
                 entity_id=entity.id,
                 entity_label=entity.label,
                 entity_type=entity.entity_type.value,
                 property_key=key,
-                event_description=label,
+                event_description=desc,
                 source_tool=tool,
             ))
 
@@ -149,18 +195,27 @@ def extract_events(
     for rel in relationships:
         tool = rel.sources[0].tool if rel.sources else "unknown"
         src_entity = entity_map.get(rel.source_id)
+        tgt_entity = entity_map.get(rel.target_id)
         label = src_entity.label if src_entity else rel.source_id
 
-        for key, desc in TEMPORAL_KEYS.items():
+        for key, generic_desc in TEMPORAL_KEYS.items():
             val = rel.properties.get(key)
             if val is None:
                 continue
             parsed = parse_temporal_value(val)
             if parsed is None:
                 continue
-            d, prec = parsed
+            ts, prec = parsed
+            # Companion label override on relationship properties
+            desc = rel.properties.get(f"{key}_label")
+            if not desc:
+                # Enrich generic description with relationship context
+                desc = generic_desc
+                if tgt_entity:
+                    rel_verb = rel.relation_type.value.replace("_", " ")
+                    desc = f"{desc} ({rel_verb} {tgt_entity.label})"
             events.append(TimelineEvent(
-                date=d,
+                timestamp=ts,
                 precision=prec,
                 entity_id=rel.source_id,
                 entity_label=label,
@@ -169,6 +224,38 @@ def extract_events(
                 event_description=desc,
                 source_tool=tool,
             ))
+
+    # Enrich event descriptions with contextual (non-temporal) relationships.
+    # E.g., OCCURRED_AT adds "at Reactor No. 4", PARTICIPATED_IN adds actor names.
+    _CONTEXT_RELATIONS = {
+        RelationType.OCCURRED_AT: "at",
+        RelationType.LOCATED_AT: "at",
+        RelationType.PARTICIPATED_IN: None,  # actors listed separately
+    }
+    # Index: target_id → [(source_label, rel_type)] for PARTICIPATED_IN (actors→event)
+    # Index: source_id → [(target_label, rel_type)] for OCCURRED_AT (event→location)
+    actors_by_event: dict[str, list[str]] = {}
+    location_by_event: dict[str, str] = {}
+    for rel in relationships:
+        if rel.relation_type == RelationType.PARTICIPATED_IN:
+            src = entity_map.get(rel.source_id)
+            if src:
+                actors_by_event.setdefault(rel.target_id, []).append(src.label)
+        elif rel.relation_type in (RelationType.OCCURRED_AT, RelationType.LOCATED_AT):
+            tgt = entity_map.get(rel.target_id)
+            if tgt:
+                location_by_event[rel.source_id] = tgt.label
+
+    for ev in events:
+        suffixes = []
+        loc = location_by_event.get(ev.entity_id)
+        if loc:
+            suffixes.append(f"at {loc}")
+        actors = actors_by_event.get(ev.entity_id)
+        if actors:
+            suffixes.append(", ".join(sorted(actors)))
+        if suffixes:
+            ev.event_description += f" [{'; '.join(suffixes)}]"
 
     return events
 
@@ -183,13 +270,13 @@ def extract_activity_events(
         parsed = parse_temporal_value(created)
         if parsed is None:
             continue
-        d, prec = parsed
+        ts, prec = parsed
         tool = row.get("tool", "unknown")
         notes = row.get("notes", "")
         # Truncate notes for display
         short = notes[:120] + "..." if len(notes) > 120 else notes
         events.append(TimelineEvent(
-            date=d,
+            timestamp=ts,
             precision=prec,
             entity_id="",
             entity_label=f"{tool} tool",
@@ -202,16 +289,41 @@ def extract_activity_events(
 
 
 # ---------------------------------------------------------------
-# Markdown renderer
+# Timestamp formatting
 # ---------------------------------------------------------------
 
-def _format_date(d: date, precision: DatePrecision) -> str:
-    if precision == DatePrecision.YEAR:
-        return str(d.year)
-    if precision == DatePrecision.MONTH:
-        return f"{d.year}-{d.month:02d}"
-    return d.isoformat()
+def _format_timestamp(
+    ts: datetime,
+    precision: DatePrecision,
+    time_only: bool = False,
+) -> str:
+    """Format a datetime according to its precision level.
 
+    When ``time_only`` is True and precision is SECOND or SUBSECOND,
+    omit the date prefix (used inside day-subgroup headers where the
+    date is already shown).
+    """
+    if precision == DatePrecision.YEAR:
+        return str(ts.year)
+    if precision == DatePrecision.MONTH:
+        return f"{ts.year}-{ts.month:02d}"
+    if precision == DatePrecision.DAY:
+        return ts.strftime("%Y-%m-%d")
+    if precision == DatePrecision.SECOND:
+        if time_only:
+            return ts.strftime("%H:%M:%S")
+        return ts.strftime("%Y-%m-%d %H:%M:%S")
+    # SUBSECOND — up to 5 decimal places, trailing zeros stripped
+    frac = f"{ts.microsecond:06d}"[:5]
+    frac = frac.rstrip("0") or "0"
+    if time_only:
+        return f"{ts:%H:%M:%S}.{frac}"
+    return f"{ts:%Y-%m-%d %H:%M:%S}.{frac}"
+
+
+# ---------------------------------------------------------------
+# Markdown renderer
+# ---------------------------------------------------------------
 
 def _render_markdown(
     events: list[TimelineEvent],
@@ -225,18 +337,22 @@ def _render_markdown(
     lines.append(f"# Timeline: {title}")
 
     if events:
-        earliest = min(e.date for e in events)
-        latest = max(e.date for e in events)
-        lines.append(f"*{len(events)} events spanning {earliest} to {latest}*")
+        earliest_ev = min(events, key=lambda e: e.timestamp)
+        latest_ev = max(events, key=lambda e: e.timestamp)
+        earliest_str = _format_timestamp(earliest_ev.timestamp, earliest_ev.precision)
+        latest_str = _format_timestamp(latest_ev.timestamp, latest_ev.precision)
+        lines.append(
+            f"*{len(events)} events spanning {earliest_str} to {latest_str}*",
+        )
         lines.append("")
 
-        # Sort events by date ascending, group by year (descending), month
-        sorted_events = sorted(events, key=lambda e: e.date)
+        # Sort events by timestamp ascending, group by year (descending), month
+        sorted_events = sorted(events, key=lambda e: e.timestamp)
 
         # Group by year
         years: dict[int, list[TimelineEvent]] = {}
         for ev in sorted_events:
-            years.setdefault(ev.date.year, []).append(ev)
+            years.setdefault(ev.timestamp.year, []).append(ev)
 
         for year in sorted(years.keys(), reverse=True):
             lines.append(f"## {year}")
@@ -245,7 +361,7 @@ def _render_markdown(
             # Group by month within year
             months: dict[int, list[TimelineEvent]] = {}
             for ev in years[year]:
-                month_key = ev.date.month if ev.precision != DatePrecision.YEAR else 0
+                month_key = ev.timestamp.month if ev.precision != DatePrecision.YEAR else 0
                 months.setdefault(month_key, []).append(ev)
 
             for month in sorted(months.keys(), reverse=True):
@@ -256,10 +372,31 @@ def _render_markdown(
                     lines.append(f"### {month_name} {year}")
                 lines.append("")
 
-                for ev in months[month]:
-                    date_str = _format_date(ev.date, ev.precision)
+                month_events = months[month]
+                # Add day subheadings when sub-day events span multiple days
+                has_subday = any(
+                    ev.precision in (DatePrecision.SECOND, DatePrecision.SUBSECOND)
+                    for ev in month_events
+                )
+                distinct_days = {ev.timestamp.date() for ev in month_events}
+                use_day_groups = has_subday and len(distinct_days) > 1
+
+                prev_day = None
+                for ev in month_events:
+                    if use_day_groups:
+                        ev_day = ev.timestamp.date()
+                        if ev_day != prev_day:
+                            if prev_day is not None:
+                                lines.append("")
+                            lines.append(f"#### {ev_day.isoformat()}")
+                            lines.append("")
+                            prev_day = ev_day
+                    # Inside day subgroups, show time-only for sub-day events
+                    ts_str = _format_timestamp(
+                        ev.timestamp, ev.precision, time_only=use_day_groups,
+                    )
                     lines.append(
-                        f"- **{date_str}** — **{ev.entity_label}** — "
+                        f"- **{ts_str}** — **{ev.entity_label}** — "
                         f"{ev.event_description} *[{ev.source_tool}]*"
                     )
                 lines.append("")
@@ -268,11 +405,13 @@ def _render_markdown(
         lines.append("---")
         lines.append("## Investigation Activity")
         lines.append("")
-        sorted_activity = sorted(activity_events, key=lambda e: e.date, reverse=True)
+        sorted_activity = sorted(
+            activity_events, key=lambda e: e.timestamp, reverse=True,
+        )
         for ev in sorted_activity:
-            date_str = _format_date(ev.date, ev.precision)
+            ts_str = _format_timestamp(ev.timestamp, ev.precision)
             lines.append(
-                f"- **{date_str}** — {ev.entity_label}: "
+                f"- **{ts_str}** — {ev.entity_label}: "
                 f"\"{ev.event_description}\" *[{ev.source_tool}]*"
             )
         lines.append("")
@@ -299,11 +438,11 @@ def _render_html(
     title: str,
 ) -> str:
     event_dicts = []
-    for ev in sorted(events, key=lambda e: e.date, reverse=True):
+    for ev in sorted(events, key=lambda e: e.timestamp, reverse=True):
         event_dicts.append({
-            "date": ev.date.isoformat(),
+            "date": ev.timestamp.isoformat(),
             "precision": ev.precision.value,
-            "date_display": _format_date(ev.date, ev.precision),
+            "date_display": _format_timestamp(ev.timestamp, ev.precision),
             "entity_id": ev.entity_id,
             "entity_label": ev.entity_label,
             "entity_type": ev.entity_type,
@@ -312,11 +451,11 @@ def _render_html(
             "is_activity": False,
         })
 
-    for ev in sorted(activity_events, key=lambda e: e.date, reverse=True):
+    for ev in sorted(activity_events, key=lambda e: e.timestamp, reverse=True):
         event_dicts.append({
-            "date": ev.date.isoformat(),
+            "date": ev.timestamp.isoformat(),
             "precision": ev.precision.value,
-            "date_display": _format_date(ev.date, ev.precision),
+            "date_display": _format_timestamp(ev.timestamp, ev.precision),
             "entity_id": "",
             "entity_label": ev.entity_label,
             "entity_type": "investigation",
@@ -332,6 +471,7 @@ def _render_html(
     html = html.replace("__EVENTS_JSON__", json.dumps(event_dicts, separators=(",", ":")))
     html = html.replace("__ENTITY_TYPES__", json.dumps(entity_types))
     html = html.replace("__SOURCE_TOOLS__", json.dumps(source_tools))
+    html = html.replace("__TYPE_COLORS__", type_colors_js())
     html = html.replace("__TITLE__", _escape_html(title or "Investigation Timeline"))
     html = html.replace("__EVENT_COUNT__", str(len(events)))
     return html
@@ -402,23 +542,6 @@ class TimelineGenerator:
 # HTML template
 # ---------------------------------------------------------------
 
-_TYPE_COLORS = {
-    "person": "#89b4fa",
-    "organization": "#f5c2e7",
-    "email": "#a6e3a1",
-    "domain": "#cba6f7",
-    "phone": "#f9e2af",
-    "address": "#94e2d5",
-    "account": "#fab387",
-    "document": "#74c7ec",
-    "fec_committee": "#f38ba8",
-    "vehicle": "#b4befe",
-    "ip_address": "#eba0ac",
-    "username": "#f2cdcd",
-    "url": "#89dceb",
-    "investigation": "#6c7086",
-}
-
 _HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -478,6 +601,9 @@ a{color:#89b4fa;text-decoration:none}
 .type-badge{display:inline-block;font-size:10px;padding:1px 5px;border-radius:3px;
   margin-left:6px;text-transform:uppercase;letter-spacing:0.5px}
 
+.day-header{font-size:13px;font-weight:600;color:#585b70;margin:16px 0 8px;
+  padding:2px 8px;border-left:2px solid #45475a;letter-spacing:0.5px}
+
 .empty-msg{text-align:center;padding:60px 20px;color:#6c7086;font-size:16px}
 </style>
 </head>
@@ -503,13 +629,7 @@ a{color:#89b4fa;text-decoration:none}
   const events = __EVENTS_JSON__;
   const entityTypes = __ENTITY_TYPES__;
   const sourceTools = __SOURCE_TOOLS__;
-  const typeColors = {
-    "person":"#89b4fa","organization":"#f5c2e7","email":"#a6e3a1",
-    "domain":"#cba6f7","phone":"#f9e2af","address":"#94e2d5",
-    "account":"#fab387","document":"#74c7ec","fec_committee":"#f38ba8",
-    "vehicle":"#b4befe","ip_address":"#eba0ac","username":"#f2cdcd",
-    "url":"#89dceb","investigation":"#6c7086"
-  };
+  const typeColors = __TYPE_COLORS__;
 
   // Build filter checkboxes
   const typeDiv = document.getElementById("type-filters");
@@ -558,8 +678,25 @@ a{color:#89b4fa;text-decoration:none}
 
     let html = "";
     Object.keys(years).sort().reverse().forEach(year => {
-      html += `<div class="year-group"><div class="year-header" onclick="this.classList.toggle('collapsed');this.nextElementSibling.style.display=this.classList.contains('collapsed')?'none':'block'">${year}</div><div class="year-events">`;
-      years[year].forEach(e => {
+      html += `<div class="year-group"><div class="year-header"
+onclick="this.classList.toggle('collapsed');
+this.nextElementSibling.style.display=
+this.classList.contains('collapsed')?'none':'block'"
+>${year}</div><div class="year-events">`;
+      const yEvents = years[year];
+      // Detect if day subgroups are needed (sub-day events spanning multiple days)
+      const hasSubday = yEvents.some(e => e.precision === "second" || e.precision === "subsecond");
+      const days = new Set(yEvents.map(e => e.date.substring(0, 10)));
+      const useDayGroups = hasSubday && days.size > 1;
+      let prevDay = "";
+      yEvents.forEach(e => {
+        if (useDayGroups) {
+          const day = e.date.substring(0, 10);
+          if (day !== prevDay) {
+            html += `<div class="day-header">${day}</div>`;
+            prevDay = day;
+          }
+        }
         const c = typeColors[e.entity_type] || "#cdd6f4";
         const cls = e.is_activity ? "event activity" : "event";
         html += `<div class="${cls}">

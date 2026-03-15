@@ -3,8 +3,8 @@
 import pytest
 
 from osint_agent.input_validation import (
-    InputValidationError,
     NORMALIZERS,
+    InputValidationError,
     normalize_domain,
     normalize_email,
     normalize_input,
@@ -14,7 +14,6 @@ from osint_agent.input_validation import (
     normalize_url,
     normalize_username,
 )
-
 
 # ------------------------------------------------------------------
 # Phone
@@ -243,5 +242,8 @@ def test_normalize_input_unknown_type_strips():
 # ------------------------------------------------------------------
 
 def test_normalizers_contains_expected_keys():
-    expected = {"phone", "domain", "email", "person_name", "username", "url", "ip", "company", "name"}
+    expected = {
+        "phone", "domain", "email", "person_name",
+        "username", "url", "ip", "company", "name",
+    }
     assert expected == set(NORMALIZERS.keys())

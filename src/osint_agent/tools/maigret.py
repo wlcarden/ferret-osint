@@ -61,7 +61,10 @@ class MaigretAdapter(ToolAdapter):
 
             report_path = Path(tmpdir) / f"report_{username}_simple.json"
             if not report_path.exists():
-                return Finding(notes=f"Maigret produced no output for '{username}'. stderr: {result.stderr[:500]}")
+                return Finding(
+                    notes=f"Maigret produced no output for '{username}'."
+                    f" stderr: {result.stderr[:500]}",
+                )
 
             raw = json.loads(report_path.read_text())
 

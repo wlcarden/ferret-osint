@@ -68,6 +68,15 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
+ignore = [
+    "E731",   # lambda-assignment — used heavily in adapters for concise transforms
+    "E741",   # ambiguous-variable-name — false positives on short loop vars
+    "N806",   # non-lowercase-variable-in-function — mock classes and constants
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/osint_agent/__main__.py" = ["E402"]         # lazy imports inside command handlers
+"src/osint_agent/tools/*.py" = ["E402", "F401"]  # conditional imports for availability checks
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,14 +1,15 @@
 """Tests for the Congress.gov adapter — legislative data."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from osint_agent.models import EntityType, RelationType
 from osint_agent.tools.congress import (
     CongressAdapter,
     _bill_type_path,
     _slug,
 )
-from osint_agent.models import EntityType, RelationType
 
 
 @pytest.fixture

@@ -2,15 +2,14 @@
 
 import pytest
 
-from osint_agent.models import Entity, EntityType, Source
 from osint_agent.graph.corroboration import (
     CONFIRMED_THRESHOLD,
-    PROBABLE_THRESHOLD,
     WEIGHT_SEMI_UNIQUE,
     WEIGHT_UNIQUE,
     WEIGHT_WEAK,
     CorroborationPolicy,
 )
+from osint_agent.models import Entity, EntityType, Source
 
 
 def _person(id: str, label: str, **props) -> Entity:

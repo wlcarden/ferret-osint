@@ -2,18 +2,18 @@
 
 import pytest
 
-from osint_agent.models import (
-    Entity,
-    EntityType,
-    RelationType,
-    Source,
-)
 from osint_agent.graph.resolver import (
     EntityResolver,
     _extract_source,
     _normalize_for_blocking,
     _score_pair,
     _token_overlap,
+)
+from osint_agent.models import (
+    Entity,
+    EntityType,
+    RelationType,
+    Source,
 )
 
 

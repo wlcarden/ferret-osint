@@ -1,11 +1,12 @@
 """Tests for the DNS enumeration adapter — raw DNS record lookups."""
 
 import sys
-import pytest
 from unittest.mock import MagicMock, patch
 
-from osint_agent.tools.dns_enum import DnsEnumAdapter
+import pytest
+
 from osint_agent.models import EntityType, RelationType
+from osint_agent.tools.dns_enum import DnsEnumAdapter
 
 
 @pytest.fixture

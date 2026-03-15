@@ -20,7 +20,7 @@ Tool sequence:
   12. MuckRock — existing FOIA requests about the org
 """
 
-from osint_agent.models import Entity, EntityType, Finding
+from osint_agent.models import EntityType, Finding
 from osint_agent.playbooks.base import Lead, Playbook, ToolStep, extract_leads_from_findings
 
 

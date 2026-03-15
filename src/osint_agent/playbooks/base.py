@@ -6,14 +6,10 @@ to pull follow-up targets from findings.
 """
 
 import abc
-import asyncio
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 
-from osint_agent.graph.sqlite_store import SqliteStore
-from osint_agent.models import Entity, EntityType, Finding, Relationship, ToolError
-from osint_agent.tools.registry import ToolRegistry
+from osint_agent.models import Entity, EntityType, Finding, ToolError
 
 
 @dataclass
@@ -211,7 +207,10 @@ def _entity_to_lead(entity: Entity) -> Lead | None:
             value=entity.label,
             score=0.35,
             source_entity_id=entity.id,
-            notes="Discovered organization — check power networks, foreign registrations, FOIA docs",
+            notes=(
+                "Discovered organization — check power networks,"
+                " foreign registrations, FOIA docs"
+            ),
         )
 
     return None

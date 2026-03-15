@@ -15,7 +15,6 @@ from osint_agent.models import (
     EntityType,
     Finding,
     Relationship,
-    RelationType,
     Source,
 )
 from osint_agent.tools.base import ToolAdapter
@@ -220,7 +219,11 @@ class ProPublicaNonprofitAdapter(ToolAdapter):
             label=name,
             properties={
                 **props,
-                "url": f"https://projects.propublica.org/nonprofits/organizations/{ein}" if ein else None,
+                "url": (
+                    f"https://projects.propublica.org"
+                    f"/nonprofits/organizations/{ein}"
+                    if ein else None
+                ),
                 "organization_type": "nonprofit",
             },
             sources=[_SOURCE()],

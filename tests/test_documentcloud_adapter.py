@@ -1,11 +1,12 @@
 """Tests for the DocumentCloud adapter — FOIA document search."""
 
 import sys
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from osint_agent.tools.documentcloud import DocumentCloudAdapter
+import pytest
+
 from osint_agent.models import EntityType
+from osint_agent.tools.documentcloud import DocumentCloudAdapter
 
 
 @pytest.fixture

@@ -3,8 +3,8 @@
 import pytest
 import pytest_asyncio
 
-from osint_agent.models import Entity, EntityType, Finding, Relationship, RelationType, Source
 from osint_agent.graph.sqlite_store import SqliteStore, _merge_sources
+from osint_agent.models import Entity, EntityType, Finding, Relationship, RelationType, Source
 
 
 @pytest_asyncio.fixture

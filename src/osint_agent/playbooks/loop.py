@@ -16,7 +16,6 @@ Tool coverage tracking prevents duplicate work: a (tool_name, input_value)
 pair is never run twice within the same investigation.
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -24,15 +23,13 @@ from osint_agent.graph.resolver import EntityResolver
 from osint_agent.graph.sqlite_store import SqliteStore
 from osint_agent.models import EntityType, Finding
 from osint_agent.playbooks.base import (
-    Lead,
     Playbook,
     PlaybookResult,
     ToolStep,
     extract_leads_from_findings,
 )
-from osint_agent.playbooks.runner import _run_steps, _run_one_step
-from osint_agent.tools.registry import INPUT_ROUTING, ToolRegistry
-
+from osint_agent.playbooks.runner import _run_steps
+from osint_agent.tools.registry import ToolRegistry
 
 # Maps lead_type to the tools and kwargs factory for following that lead.
 # Expanded from runner.py's _LEAD_TOOL_MAP to cover all routable types.
@@ -80,7 +77,9 @@ class LoopConfig:
     max_stale_rounds: int = 3
     lead_score_threshold: float = 0.4
     max_leads_per_round: int = 3
-    completeness_criteria: dict[EntityType, int] = field(default_factory=lambda: dict(DEFAULT_COMPLETENESS))
+    completeness_criteria: dict[EntityType, int] = field(
+        default_factory=lambda: dict(DEFAULT_COMPLETENESS),
+    )
 
 
 @dataclass
@@ -394,4 +393,6 @@ def _step_input_value(step: ToolStep) -> str:
 
 def _log(msg: str) -> None:
     """Print progress."""
-    print(msg)
+    from osint_agent import console
+
+    console.status(msg)

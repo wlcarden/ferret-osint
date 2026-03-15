@@ -45,8 +45,9 @@ class DnsEnumAdapter(ToolAdapter):
             domain: Domain name to enumerate.
         """
         import asyncio
-        import dns.resolver
+
         import dns.exception
+        import dns.resolver
 
         entities: list[Entity] = []
         relationships: list[Relationship] = []
@@ -96,7 +97,10 @@ class DnsEnumAdapter(ToolAdapter):
                 id=f"domain:{host}",
                 entity_type=EntityType.DOMAIN,
                 label=host,
-                properties={"role": "mail_server", "mx_priority": parts[0] if len(parts) > 1 else None},
+                properties={
+                    "role": "mail_server",
+                    "mx_priority": parts[0] if len(parts) > 1 else None,
+                },
                 sources=[_SOURCE()],
             )
             entities.append(mx_ent)
@@ -139,7 +143,7 @@ class DnsEnumAdapter(ToolAdapter):
         # Extract interesting TXT data.
         txt_records = all_records.get("TXT", [])
         spf = [t for t in txt_records if "v=spf1" in t]
-        dmarc_domain = f"_dmarc.{domain}"
+        _dmarc_domain = f"_dmarc.{domain}"
         if spf:
             base.properties["spf_policy"] = spf[0]
 

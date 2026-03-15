@@ -1,11 +1,11 @@
 """Tests for the Reddit adapter — profile, post history, and analysis."""
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from osint_agent.tools.reddit import RedditAdapter, _POLITICAL_SUBREDDITS
+import pytest
+
 from osint_agent.models import EntityType, RelationType
+from osint_agent.tools.reddit import _POLITICAL_SUBREDDITS, RedditAdapter
 
 
 @pytest.fixture
@@ -261,7 +261,7 @@ def test_political_subreddits_coverage():
 
 def test_registered_in_registry():
     """should be registered and routable by username input type"""
-    from osint_agent.tools.registry import ToolRegistry, INPUT_ROUTING
+    from osint_agent.tools.registry import INPUT_ROUTING, ToolRegistry
 
     assert "reddit" in INPUT_ROUTING["username"]
     registry = ToolRegistry()

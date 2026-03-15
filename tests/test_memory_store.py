@@ -2,8 +2,8 @@
 
 import pytest
 
-from osint_agent.models import Entity, EntityType, Finding, Relationship, RelationType, Source
 from osint_agent.graph.memory_store import MemoryStore
+from osint_agent.models import Entity, EntityType, Finding, Relationship, RelationType, Source
 
 
 @pytest.fixture

@@ -163,19 +163,10 @@ async def validate_api_keys(
     return validated
 
 
-def print_validation_report(results: list[tuple[str, bool, str]]) -> None:
+def print_validation_report(
+    results: list[tuple[str, bool, str]],
+) -> None:
     """Print a formatted API key validation report."""
-    if not results:
-        print("  No API keys configured to validate.")
-        return
+    from osint_agent import console
 
-    print("  API Key Validation:")
-    for name, valid, msg in sorted(results, key=lambda r: (r[1], r[0])):
-        icon = "OK" if valid else "FAIL"
-        print(f"    [{icon:>4}] {name}: {msg}")
-
-    valid_count = sum(1 for _, v, _ in results if v)
-    total = len(results)
-    if valid_count < total:
-        invalid = total - valid_count
-        print(f"\n  WARNING: {invalid} key(s) failed validation — affected tools may error during investigation")
+    console.validation_report(results)

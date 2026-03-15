@@ -206,7 +206,7 @@ class FaraAdapter(ToolAdapter):
                         }.items() if v
                     },
                     sources=[_SOURCE(
-                        f"https://efile.fara.gov/ords/fara/f?p=1235:10"
+                        "https://efile.fara.gov/ords/fara/f?p=1235:10"
                     )],
                 )
                 entities.append(fp_ent)
@@ -290,7 +290,11 @@ class FaraAdapter(ToolAdapter):
                 "zip": str(row.get("Zip", "")) if row.get("Zip") else None,
                 "fara_status": status,
                 "entity_type": "foreign_agent_registrant",
-                "url": f"https://efile.fara.gov/ords/fara/f?p=1235:10::::RP,10:P10_REG_NUMBER:{reg_num}" if reg_num else None,
+                "url": (
+                    f"https://efile.fara.gov/ords/fara"
+                    f"/f?p=1235:10::::RP,10:P10_REG_NUMBER:{reg_num}"
+                    if reg_num else None
+                ),
             }.items() if v
         }
 
@@ -300,7 +304,7 @@ class FaraAdapter(ToolAdapter):
             label=name,
             properties=props,
             sources=[_SOURCE(
-                f"https://efile.fara.gov/ords/fara/f?p=1235:10"
+                "https://efile.fara.gov/ords/fara/f?p=1235:10"
             )],
         )
 

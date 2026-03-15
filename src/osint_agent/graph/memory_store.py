@@ -2,8 +2,8 @@
 
 import networkx as nx
 
-from osint_agent.models import Entity, Relationship
 from osint_agent.graph.store import GraphStore
+from osint_agent.models import Entity, Relationship
 
 
 class MemoryStore(GraphStore):
@@ -83,7 +83,8 @@ class MemoryStore(GraphStore):
             rel_counts[t] = rel_counts.get(t, 0) + 1
 
         lines = [
-            f"Graph: {self.graph.number_of_nodes()} entities, {self.graph.number_of_edges()} relationships",
+            f"Graph: {self.graph.number_of_nodes()} entities,"
+            f" {self.graph.number_of_edges()} relationships",
             "Entity types:",
         ]
         for t, count in sorted(type_counts.items()):

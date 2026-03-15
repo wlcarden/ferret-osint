@@ -1,7 +1,8 @@
 """Tests for the yt-dlp adapter — YouTube/video metadata extraction."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from osint_agent.models import EntityType, RelationType
 from osint_agent.tools.ytdlp import YtDlpAdapter
@@ -122,7 +123,10 @@ async def test_run_video_entities(adapter, mock_video_info):
     video = docs[0]
     assert video.id == "document:video:dQw4w9WgXcQ"
     assert "Never Gonna Give You Up" in video.label
-    assert video.properties["title"] == "Rick Astley - Never Gonna Give You Up (Official Music Video)"
+    assert video.properties["title"] == (
+        "Rick Astley - Never Gonna Give You Up"
+        " (Official Music Video)"
+    )
     assert video.properties["upload_date"] == "20091025"
     assert video.properties["duration"] == 213
     assert video.properties["view_count"] == 1500000000

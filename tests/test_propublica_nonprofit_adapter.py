@@ -1,9 +1,10 @@
 """Tests for the ProPublica Nonprofit Explorer adapter."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from osint_agent.models import EntityType, RelationType
+import pytest
+
+from osint_agent.models import EntityType
 from osint_agent.tools.propublica_nonprofit import (
     ProPublicaNonprofitAdapter,
     _ntee_category,
@@ -500,7 +501,7 @@ async def test_search_detail_fetch_fails_gracefully(
 # ------------------------------------------------------------------
 
 def test_registered_in_registry():
-    from osint_agent.tools.registry import ToolRegistry, INPUT_ROUTING
+    from osint_agent.tools.registry import INPUT_ROUTING, ToolRegistry
 
     assert "propublica_nonprofit" in INPUT_ROUTING["company"]
     registry = ToolRegistry()

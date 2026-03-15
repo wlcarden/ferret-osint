@@ -61,8 +61,10 @@ _POLITICAL_SUBREDDITS = {
 
 # Patterns that might indicate location self-disclosure
 _LOCATION_PATTERNS = [
-    r"(?:I(?:'m| am) (?:from|in|based in|living in))\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:,\s*[A-Z]{2})?)",
-    r"(?:here in|moved to|live in|born in)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:,\s*[A-Z]{2})?)",
+    r"(?:I(?:'m| am) (?:from|in|based in|living in))\s+"
+    r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:,\s*[A-Z]{2})?)",
+    r"(?:here in|moved to|live in|born in)\s+"
+    r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:,\s*[A-Z]{2})?)",
 ]
 
 

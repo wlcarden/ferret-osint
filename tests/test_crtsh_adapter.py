@@ -1,11 +1,12 @@
 """Tests for the crt.sh adapter — Certificate Transparency subdomain discovery."""
 
 import sys
-import pytest
 from unittest.mock import MagicMock, patch
 
-from osint_agent.tools.crtsh import CrtshAdapter
+import pytest
+
 from osint_agent.models import EntityType, RelationType
+from osint_agent.tools.crtsh import CrtshAdapter
 
 
 @pytest.fixture

@@ -1,19 +1,16 @@
 """Tests for the CrossLinked adapter — LinkedIn employee enumeration."""
 
-import csv
-import os
 import subprocess
-import tempfile
+from unittest.mock import patch
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
+from osint_agent.models import EntityType, RelationType
 from osint_agent.tools.crosslinked import (
     CrossLinkedAdapter,
-    _slug,
     _parse_stdout,
+    _slug,
 )
-from osint_agent.models import EntityType, RelationType
 
 
 @pytest.fixture

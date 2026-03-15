@@ -2,12 +2,12 @@
 
 import json
 import subprocess
+from unittest.mock import patch
 
 import pytest
-from unittest.mock import AsyncMock, patch
 
-from osint_agent.tools.exiftool import ExifToolAdapter
 from osint_agent.models import EntityType, RelationType
+from osint_agent.tools.exiftool import ExifToolAdapter
 
 
 @pytest.fixture

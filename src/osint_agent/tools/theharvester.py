@@ -32,7 +32,10 @@ class TheHarvesterAdapter(ToolAdapter):
     async def run(
         self,
         domain: str,
-        sources: str = "baidu,brave,certspotter,crtsh,dnsdumpster,duckduckgo,hackertarget,rapiddns,urlscan",
+        sources: str = (
+            "baidu,brave,certspotter,crtsh,dnsdumpster,"
+            "duckduckgo,hackertarget,rapiddns,urlscan"
+        ),
         limit: int = 200,
     ) -> Finding:
         """Harvest emails, subdomains, and IPs for a domain.
@@ -56,7 +59,10 @@ class TheHarvesterAdapter(ToolAdapter):
 
             json_path = Path(f"{output_file}.json")
             if not json_path.exists():
-                return Finding(notes=f"theHarvester produced no JSON output for '{domain}'. stderr: {result.stderr[:500]}")
+                return Finding(
+                    notes=f"theHarvester produced no JSON output"
+                    f" for '{domain}'. stderr: {result.stderr[:500]}",
+                )
 
             raw = json.loads(json_path.read_text())
 
@@ -127,5 +133,9 @@ class TheHarvesterAdapter(ToolAdapter):
         return Finding(
             entities=entities,
             relationships=relationships,
-            notes=f"theHarvester for '{domain}': {len(emails)} emails, {len(hosts)} hosts, {len(ips)} IPs",
+            notes=(
+                f"theHarvester for '{domain}':"
+                f" {len(emails)} emails,"
+                f" {len(hosts)} hosts, {len(ips)} IPs"
+            ),
         )

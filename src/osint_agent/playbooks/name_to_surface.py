@@ -16,11 +16,9 @@ Tool sequence:
   9. Common username patterns → Maigret
 """
 
-import re
 
-from osint_agent.models import Entity, EntityType, Finding
+from osint_agent.models import EntityType, Finding
 from osint_agent.playbooks.base import Lead, Playbook, ToolStep, extract_leads_from_findings
-
 
 # Common username patterns generated from a name
 _USERNAME_PATTERNS = [
@@ -148,7 +146,10 @@ class NameToSurface(Playbook):
         # Find the seed name from findings to generate more username variants
         for finding in findings:
             for entity in finding.entities:
-                if entity.entity_type == EntityType.PERSON and not entity.properties.get("is_secondary"):
+                if (
+                    entity.entity_type == EntityType.PERSON
+                    and not entity.properties.get("is_secondary")
+                ):
                     parts = entity.label.strip().split()
                     if len(parts) >= 2:
                         first, last = parts[0], parts[-1]

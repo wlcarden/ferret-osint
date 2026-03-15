@@ -176,7 +176,11 @@ class LittleSisAdapter(ToolAdapter):
             else:
                 other_id = entity1_id
 
-            other_name = rel_attrs.get("entity2_id") if entity1_id == str(ls_id) else rel_attrs.get("entity1_id")
+            _other_name = (
+                rel_attrs.get("entity2_id")
+                if entity1_id == str(ls_id)
+                else rel_attrs.get("entity1_id")
+            )
 
             # We need the other entity's name. Check for it in attributes.
             desc1 = rel_attrs.get("description1", "")

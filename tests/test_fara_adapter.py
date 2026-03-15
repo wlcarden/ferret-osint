@@ -1,10 +1,11 @@
 """Tests for the FARA adapter — Foreign Agents Registration Act."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from osint_agent.models import EntityType
 from osint_agent.tools.fara import FaraAdapter, _extract_rows, _slug
-from osint_agent.models import EntityType, RelationType
 
 
 @pytest.fixture

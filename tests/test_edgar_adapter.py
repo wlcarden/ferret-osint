@@ -1,6 +1,5 @@
 """Tests for the EDGAR adapter's parsing logic."""
 
-from osint_agent.models import EntityType, RelationType
 from osint_agent.tools.edgar import EdgarAdapter
 
 

@@ -200,7 +200,9 @@ class SqliteStore(GraphStore):
             )
         else:
             await db.execute(
-                """INSERT INTO entities (id, entity_type, label, properties, sources, created_at, updated_at)
+                """INSERT INTO entities
+                   (id, entity_type, label, properties,
+                    sources, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
                     entity.id,
@@ -250,7 +252,9 @@ class SqliteStore(GraphStore):
         else:
             await db.execute(
                 """INSERT INTO relationships
-                   (source_id, target_id, relation_type, properties, sources, created_at, updated_at)
+                   (source_id, target_id, relation_type,
+                    properties, sources,
+                    created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
                     rel.source_id,
@@ -682,7 +686,9 @@ class SqliteStore(GraphStore):
         now = datetime.now(UTC).isoformat()
         cursor = await db.execute(
             """INSERT INTO leads
-               (investigation_id, entity_id, lead_type, value, score, status, notes, created_at, updated_at)
+               (investigation_id, entity_id, lead_type,
+                value, score, status, notes,
+                created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)""",
             (investigation_id, entity_id, lead_type, value, score, notes, now, now),
         )

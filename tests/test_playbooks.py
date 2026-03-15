@@ -1,31 +1,27 @@
 """Tests for the playbook system — base, individual playbooks, and runner."""
 
-import pytest
-import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+import pytest_asyncio
+
+from osint_agent.graph.sqlite_store import SqliteStore
 from osint_agent.models import (
     Entity,
     EntityType,
     Finding,
-    Relationship,
-    RelationType,
     Source,
 )
 from osint_agent.playbooks.base import (
     Lead,
-    Playbook,
     PlaybookResult,
-    ToolStep,
-    extract_leads_from_findings,
     _entity_to_lead,
+    extract_leads_from_findings,
 )
-from osint_agent.playbooks.username_to_identity import UsernameToldentity
 from osint_agent.playbooks.name_to_surface import NameToSurface, _generate_username_variants
 from osint_agent.playbooks.org_to_members import OrgToMembers
 from osint_agent.playbooks.runner import run_playbook
-from osint_agent.graph.sqlite_store import SqliteStore
-
+from osint_agent.playbooks.username_to_identity import UsernameToldentity
 
 # ------------------------------------------------------------------
 # Fixtures
@@ -254,9 +250,18 @@ def test_extract_leads_sorted_by_score():
     """should sort leads by score descending"""
     findings = [
         Finding(entities=[
-            Entity(id="d:test.com", entity_type=EntityType.DOMAIN, label="test.com", sources=[Source(tool="a")]),
-            Entity(id="e:a@test.com", entity_type=EntityType.EMAIL, label="a@test.com", sources=[Source(tool="a")]),
-            Entity(id="u:johndoe", entity_type=EntityType.USERNAME, label="johndoe", sources=[Source(tool="a")]),
+            Entity(
+                id="d:test.com", entity_type=EntityType.DOMAIN,
+                label="test.com", sources=[Source(tool="a")],
+            ),
+            Entity(
+                id="e:a@test.com", entity_type=EntityType.EMAIL,
+                label="a@test.com", sources=[Source(tool="a")],
+            ),
+            Entity(
+                id="u:johndoe", entity_type=EntityType.USERNAME,
+                label="johndoe", sources=[Source(tool="a")],
+            ),
         ]),
     ]
     leads = extract_leads_from_findings(findings)
@@ -350,8 +355,14 @@ def test_username_playbook_boosts_email_leads():
     pb = UsernameToldentity()
     findings = [
         Finding(entities=[
-            Entity(id="e:a@test.com", entity_type=EntityType.EMAIL, label="a@test.com", sources=[Source(tool="a")]),
-            Entity(id="d:test.com", entity_type=EntityType.DOMAIN, label="test.com", sources=[Source(tool="a")]),
+            Entity(
+                id="e:a@test.com", entity_type=EntityType.EMAIL,
+                label="a@test.com", sources=[Source(tool="a")],
+            ),
+            Entity(
+                id="d:test.com", entity_type=EntityType.DOMAIN,
+                label="test.com", sources=[Source(tool="a")],
+            ),
         ]),
     ]
     leads = pb.extract_leads(findings)

@@ -1,6 +1,5 @@
 """Tests for the USASpending adapter."""
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -322,7 +321,7 @@ async def test_default_mode_is_recipient(adapter):
 
 def test_document_entity_id_format():
     """Verify the document entity ID format follows the convention."""
-    adapter = UsaSpendingAdapter()
+    _adapter = UsaSpendingAdapter()
     # Test indirectly through the normalize function
     expected_prefix = "document:usaspending:"
     assert expected_prefix.startswith("document:usaspending:")

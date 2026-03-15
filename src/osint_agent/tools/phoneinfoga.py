@@ -62,7 +62,10 @@ class PhoneInfogaAdapter(ToolAdapter):
                     "carrier": data.get("carrier"),
                     "country": data.get("country"),
                     "country_code": data.get("countryCode"),
-                    "international_format": data.get("international_format") or data.get("formatInternational"),
+                    "international_format": (
+                        data.get("international_format")
+                        or data.get("formatInternational")
+                    ),
                     "local_format": data.get("local_format") or data.get("formatNational"),
                     "line_type": data.get("line_type") or data.get("lineType"),
                     "location": data.get("location"),
@@ -80,5 +83,9 @@ class PhoneInfogaAdapter(ToolAdapter):
 
         return Finding(
             entities=[phone],
-            notes=f"PhoneInfoga scan of '{phone_number}': carrier={properties.get('carrier', 'unknown')}, country={properties.get('country', 'unknown')}",
+            notes=(
+                f"PhoneInfoga scan of '{phone_number}':"
+                f" carrier={properties.get('carrier', 'unknown')},"
+                f" country={properties.get('country', 'unknown')}"
+            ),
         )

@@ -15,9 +15,6 @@ import pytest_asyncio
 from osint_agent.graph.corroboration import (
     CONFIRMED_THRESHOLD,
     ORG_CONFIRMED_THRESHOLD,
-    ORG_PROBABLE_THRESHOLD,
-    PROBABLE_THRESHOLD,
-    CorroborationPolicy,
 )
 from osint_agent.graph.resolver import EntityResolver
 from osint_agent.graph.sqlite_store import SqliteStore
@@ -30,7 +27,6 @@ from osint_agent.models import (
     Source,
 )
 from osint_agent.report import ReportGenerator, _reconstruct_entity
-
 
 # ── Helpers ──────────────────────────────────────────────────────
 

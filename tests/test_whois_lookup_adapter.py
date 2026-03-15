@@ -409,7 +409,7 @@ async def test_run_handles_timeout(adapter):
 # ------------------------------------------------------------------
 
 def test_registered_in_registry():
-    from osint_agent.tools.registry import ToolRegistry, INPUT_ROUTING
+    from osint_agent.tools.registry import INPUT_ROUTING, ToolRegistry
 
     assert "whois" in INPUT_ROUTING["domain"]
     registry = ToolRegistry()

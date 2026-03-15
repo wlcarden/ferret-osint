@@ -48,7 +48,7 @@ def is_false_positive(
     if it appears legitimate.
     """
     if site_name in BLOCKLISTED_SITES:
-        return f"blocklisted site (claims any username)"
+        return "blocklisted site (claims any username)"
 
     if http_status and http_status in _CONTRADICTING_HTTP_STATUSES:
         return f"HTTP {http_status} contradicts claimed status"

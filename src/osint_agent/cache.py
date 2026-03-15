@@ -199,7 +199,8 @@ class ToolCache:
         valid = (await cursor.fetchone())[0]
 
         cursor = await db.execute(
-            "SELECT tool_name, COUNT(*) as cnt FROM tool_cache GROUP BY tool_name ORDER BY cnt DESC",
+            "SELECT tool_name, COUNT(*) as cnt"
+            " FROM tool_cache GROUP BY tool_name ORDER BY cnt DESC",
         )
         by_tool = {row["tool_name"]: row["cnt"] for row in await cursor.fetchall()}
 

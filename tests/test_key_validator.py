@@ -1,11 +1,12 @@
 """Tests for API key validation."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from osint_agent.key_validator import (
-    _check_courtlistener,
     _check_congress,
+    _check_courtlistener,
     _check_openfec,
     _check_sec_edgar,
     _check_shodan,
@@ -191,7 +192,7 @@ async def test_validate_api_keys_includes_unconfigured():
 
 def test_print_validation_report_no_results(capsys):
     print_validation_report([])
-    output = capsys.readouterr().out
+    output = capsys.readouterr().err
     assert "No API keys configured" in output
 
 
@@ -201,15 +202,15 @@ def test_print_validation_report_mixed(capsys):
         ("OpenFEC", False, "invalid API key (403)"),
     ]
     print_validation_report(results)
-    output = capsys.readouterr().out
-    assert "[  OK] CourtListener" in output
-    assert "[FAIL] OpenFEC" in output
+    output = capsys.readouterr().err
+    assert "OK" in output and "CourtListener" in output
+    assert "FAIL" in output and "OpenFEC" in output
     assert "1 key(s) failed" in output
 
 
 def test_print_validation_report_all_valid(capsys):
     results = [("CourtListener", True, "valid")]
     print_validation_report(results)
-    output = capsys.readouterr().out
-    assert "[  OK]" in output
+    output = capsys.readouterr().err
+    assert "OK" in output
     assert "WARNING" not in output

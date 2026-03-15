@@ -234,7 +234,10 @@ class EdgarAdapter(ToolAdapter):
                     properties={"evidence": "form_4_filing", "filing_date": filing_date},
                     sources=[Source(
                         tool=self.name,
-                        source_url=f"https://www.sec.gov/Archives/edgar/data/{cik}/{accession.replace('-', '')}",
+                        source_url=(
+                            f"https://www.sec.gov/Archives/edgar/data"
+                            f"/{cik}/{accession.replace('-', '')}"
+                        ),
                     )],
                 ))
 

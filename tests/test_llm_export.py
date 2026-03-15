@@ -1,13 +1,13 @@
 """Tests for LLM export/ingest — export_investigation() and ingest_extraction()."""
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
 
 from osint_agent.graph.sqlite_store import SqliteStore
+from osint_agent.llm_export import export_investigation, ingest_extraction
 from osint_agent.models import (
     Entity,
     EntityType,
@@ -16,7 +16,6 @@ from osint_agent.models import (
     RelationType,
     Source,
 )
-from osint_agent.llm_export import export_investigation, ingest_extraction
 
 
 @pytest_asyncio.fixture
@@ -437,7 +436,7 @@ async def test_ingest_deduplicates_leads(store, tmp_path):
         ],
     }
     path = _write_extraction(tmp_path, extraction)
-    result = await ingest_extraction(store, path)
+    _result = await ingest_extraction(store, path)
 
     # Should have the explicit lead but not a duplicate auto-extracted one
     leads = await store.get_leads()

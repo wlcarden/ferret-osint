@@ -6,6 +6,7 @@ graph visualization of the entity/relationship data in the graph store.
 
 import json
 
+from osint_agent.theme import rel_colors_js, type_colors_js, type_shapes_js
 
 # Keys that are structural metadata, not display properties.
 _META_KEYS = frozenset({
@@ -108,6 +109,9 @@ class GraphExporter:
         html = html.replace("__ENTITY_TYPES__", json.dumps(entity_types))
         html = html.replace("__REL_TYPES__", json.dumps(rel_types))
         html = html.replace("__SOURCE_TOOLS__", json.dumps(sorted(source_tools)))
+        html = html.replace("__TYPE_COLORS__", type_colors_js())
+        html = html.replace("__TYPE_SHAPES__", type_shapes_js())
+        html = html.replace("__REL_COLORS__", rel_colors_js())
         html = html.replace("__TITLE__", _escape_html(title or "OSINT Investigation Graph"))
         return html
 
@@ -135,15 +139,25 @@ _TEMPLATE = r"""<!DOCTYPE html>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.4/cytoscape.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#1e1e2e;color:#cdd6f4;overflow:hidden}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+background:#1e1e2e;color:#cdd6f4;overflow:hidden}
 
-#app{display:grid;grid-template-columns:260px 1fr;grid-template-rows:44px 1fr;height:100vh;transition:grid-template-columns .2s}
+#app{display:grid;grid-template-columns:260px 1fr;
+grid-template-rows:44px 1fr;height:100vh;
+transition:grid-template-columns .2s}
 #app.detail-open{grid-template-columns:260px 1fr 340px}
 
 /* --- Top bar --- */
-#topbar{grid-column:1/-1;background:#181825;border-bottom:1px solid #313244;display:flex;align-items:center;padding:0 16px;gap:10px}
-#topbar h1{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
-#topbar select,#topbar button{background:#313244;color:#cdd6f4;border:1px solid #45475a;border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
+#topbar{grid-column:1/-1;background:#181825;
+border-bottom:1px solid #313244;display:flex;
+align-items:center;padding:0 16px;gap:10px}
+#topbar h1{font-size:14px;font-weight:600;
+white-space:nowrap;overflow:hidden;
+text-overflow:ellipsis;max-width:260px}
+#topbar select,#topbar button{background:#313244;
+color:#cdd6f4;border:1px solid #45475a;
+border-radius:4px;padding:4px 10px;
+font-size:12px;cursor:pointer;white-space:nowrap}
 #topbar select:hover,#topbar button:hover{background:#45475a}
 #topbar button.active{background:#89b4fa33;border-color:#89b4fa;color:#89b4fa}
 .tb-sep{width:1px;height:20px;background:#313244;flex-shrink:0}
@@ -151,16 +165,23 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#1e1e2
 .shortcut{font-size:9px;color:#45475a;margin-left:2px}
 
 /* --- Sidebar --- */
-#sidebar{background:#181825;border-right:1px solid #313244;padding:10px;overflow-y:auto;font-size:13px;grid-column:1;grid-row:2}
+#sidebar{background:#181825;border-right:1px solid #313244;
+padding:10px;overflow-y:auto;font-size:13px;
+grid-column:1;grid-row:2}
 .filter-header{display:flex;align-items:center;margin:14px 0 6px}
 .filter-header:first-child{margin-top:4px}
-.filter-header h3{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#6c7086;user-select:none;flex:1}
+.filter-header h3{font-size:10px;text-transform:uppercase;
+letter-spacing:.8px;color:#6c7086;user-select:none;flex:1}
 .filter-toggle{font-size:9px;color:#585b70;cursor:pointer;padding:1px 4px;border-radius:2px}
 .filter-toggle:hover{color:#89b4fa}
-#search{width:100%;padding:6px 8px;background:#313244;border:1px solid #45475a;border-radius:4px;color:#cdd6f4;font-size:12px;outline:none;margin-bottom:4px}
+#search{width:100%;padding:6px 8px;background:#313244;
+border:1px solid #45475a;border-radius:4px;
+color:#cdd6f4;font-size:12px;outline:none;
+margin-bottom:4px}
 #search:focus{border-color:#89b4fa}
 #search::placeholder{color:#585b70}
-.filter-item{display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;user-select:none}
+.filter-item{display:flex;align-items:center;
+gap:6px;padding:2px 0;cursor:pointer;user-select:none}
 .filter-item input{accent-color:#89b4fa;cursor:pointer}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex-shrink:0}
 .filter-item.edge-filter .dot{border-radius:2px;width:14px;height:4px}
@@ -170,55 +191,100 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#1e1e2
 #cy{background:#1e1e2e;grid-column:2;grid-row:2;min-width:0;overflow:hidden}
 
 /* --- Tooltip --- */
-#tip{position:fixed;background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px 10px;pointer-events:none;z-index:100;display:none;max-width:320px;font-size:11px;box-shadow:0 4px 12px #00000066}
+#tip{position:fixed;background:#313244;
+border:1px solid #45475a;border-radius:6px;
+padding:8px 10px;pointer-events:none;z-index:100;
+display:none;max-width:320px;font-size:11px;
+box-shadow:0 4px 12px #00000066}
 #tip .tip-label{font-weight:600;font-size:12px;margin-bottom:4px;word-break:break-word}
-#tip .tip-badge{display:inline-block;font-size:9px;padding:1px 6px;border-radius:3px;font-weight:600;text-transform:uppercase;margin-bottom:4px}
+#tip .tip-badge{display:inline-block;font-size:9px;
+padding:1px 6px;border-radius:3px;font-weight:600;
+text-transform:uppercase;margin-bottom:4px}
 #tip .tip-row{color:#a6adc8;font-size:10px;margin-top:2px}
 #tip .tip-row span{color:#cdd6f4}
 #tip .tip-id{color:#585b70;font-size:9px;margin-top:3px;word-break:break-all}
 
 /* --- Context menu --- */
-#ctx-menu{position:fixed;background:#313244;border:1px solid #45475a;border-radius:6px;padding:4px 0;z-index:200;display:none;min-width:180px;box-shadow:0 4px 16px #000000aa;font-size:12px}
-#ctx-menu .ctx-item{padding:6px 14px;cursor:pointer;display:flex;align-items:center;gap:8px}
+#ctx-menu{position:fixed;background:#313244;
+border:1px solid #45475a;border-radius:6px;
+padding:4px 0;z-index:200;display:none;
+min-width:180px;box-shadow:0 4px 16px #000000aa;
+font-size:12px}
+#ctx-menu .ctx-item{padding:6px 14px;cursor:pointer;
+display:flex;align-items:center;gap:8px}
 #ctx-menu .ctx-item:hover{background:#45475a}
 #ctx-menu .ctx-item .ctx-key{margin-left:auto;font-size:10px;color:#585b70}
 #ctx-menu .ctx-sep{height:1px;background:#45475a;margin:3px 0}
 
 /* --- Detail panel --- */
-#detail{background:#181825;border-left:1px solid #313244;padding:14px;overflow-y:auto;display:none;font-size:13px;grid-column:3;grid-row:2}
+#detail{background:#181825;
+border-left:1px solid #313244;padding:14px;
+overflow-y:auto;display:none;font-size:13px;
+grid-column:3;grid-row:2}
 #app.detail-open #detail{display:block}
 #detail-header{display:flex;align-items:start;gap:8px;margin-bottom:6px}
-#detail-header h2{font-size:14px;font-weight:600;word-break:break-word;flex:1}
-#close-detail{background:none;border:none;color:#6c7086;font-size:18px;cursor:pointer;padding:0 4px;line-height:1}
+#detail-header h2{font-size:14px;font-weight:600;
+word-break:break-word;flex:1}
+#close-detail{background:none;border:none;
+color:#6c7086;font-size:18px;cursor:pointer;
+padding:0 4px;line-height:1}
 #close-detail:hover{color:#cdd6f4}
 #detail-id{font-size:10px;color:#585b70;word-break:break-all;margin-bottom:8px}
-.badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:3px;font-weight:600;text-transform:uppercase;margin-bottom:8px}
-.degree-badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:3px;background:#313244;color:#a6adc8;margin-left:6px;margin-bottom:8px}
-#detail h3{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#6c7086;margin:12px 0 6px;border-top:1px solid #313244;padding-top:10px}
+.badge{display:inline-block;font-size:10px;
+padding:2px 8px;border-radius:3px;font-weight:600;
+text-transform:uppercase;margin-bottom:8px}
+.degree-badge{display:inline-block;font-size:10px;
+padding:2px 8px;border-radius:3px;background:#313244;
+color:#a6adc8;margin-left:6px;margin-bottom:8px}
+#detail h3{font-size:10px;text-transform:uppercase;
+letter-spacing:.8px;color:#6c7086;
+margin:12px 0 6px;border-top:1px solid #313244;
+padding-top:10px}
 #detail h3:first-of-type{border-top:none;padding-top:0}
 #detail table{width:100%;border-collapse:collapse}
-#detail th{text-align:left;color:#6c7086;padding:3px 8px 3px 0;font-weight:400;vertical-align:top;white-space:nowrap;font-size:11px}
+#detail th{text-align:left;color:#6c7086;
+padding:3px 8px 3px 0;font-weight:400;
+vertical-align:top;white-space:nowrap;font-size:11px}
 #detail td{padding:3px 0;word-break:break-all;font-size:12px}
 #detail td a{color:#89b4fa;text-decoration:none}
 #detail td a:hover{text-decoration:underline}
-.conn-group-header{font-size:10px;color:#585b70;padding:6px 0 3px;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px}
+.conn-group-header{font-size:10px;color:#585b70;
+padding:6px 0 3px;text-transform:uppercase;
+letter-spacing:.5px;display:flex;
+align-items:center;gap:6px}
 .conn-group-header .dot{width:8px;height:3px;border-radius:1px}
-.conn-item{padding:4px 6px;display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:4px;margin:1px 0}
+.conn-item{padding:4px 6px;display:flex;
+align-items:center;gap:6px;cursor:pointer;
+border-radius:4px;margin:1px 0}
 .conn-item:hover{background:#31324488}
 .conn-dir{font-size:14px;color:#585b70;width:16px;text-align:center;flex-shrink:0}
 .conn-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.conn-label{font-size:12px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.conn-type-tag{font-size:9px;color:#585b70;background:#1e1e2e;padding:1px 5px;border-radius:2px;flex-shrink:0}
-.tool-tag{display:inline-block;font-size:10px;padding:2px 6px;background:#313244;border-radius:3px;margin:2px 2px 2px 0}
+.conn-label{font-size:12px;flex:1;white-space:nowrap;
+overflow:hidden;text-overflow:ellipsis}
+.conn-type-tag{font-size:9px;color:#585b70;
+background:#1e1e2e;padding:1px 5px;
+border-radius:2px;flex-shrink:0}
+.tool-tag{display:inline-block;font-size:10px;
+padding:2px 6px;background:#313244;
+border-radius:3px;margin:2px 2px 2px 0}
 
 /* --- Path info bar --- */
-#path-info{display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#313244;border:1px solid #f9e2af;border-radius:8px;padding:8px 16px;z-index:100;font-size:12px;color:#f9e2af;box-shadow:0 4px 16px #000000aa;max-width:600px;text-align:center}
+#path-info{display:none;position:fixed;bottom:16px;
+left:50%;transform:translateX(-50%);
+background:#313244;border:1px solid #f9e2af;
+border-radius:8px;padding:8px 16px;z-index:100;
+font-size:12px;color:#f9e2af;
+box-shadow:0 4px 16px #000000aa;
+max-width:600px;text-align:center}
 #path-info .path-close{cursor:pointer;margin-left:10px;color:#6c7086;font-size:14px}
 #path-info .path-close:hover{color:#cdd6f4}
 #path-info .path-steps{color:#cdd6f4;margin-top:4px;font-size:11px}
 
 /* --- Loading overlay --- */
-#loading{position:fixed;top:0;left:0;width:100%;height:100%;background:#1e1e2e;display:flex;align-items:center;justify-content:center;z-index:999;font-size:14px;color:#6c7086}
+#loading{position:fixed;top:0;left:0;width:100%;
+height:100%;background:#1e1e2e;display:flex;
+align-items:center;justify-content:center;
+z-index:999;font-size:14px;color:#6c7086}
 #loading.hidden{display:none}
 </style>
 </head>
@@ -237,21 +303,40 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#1e1e2
  <span class="tb-sep"></span>
  <button id="fit-btn" title="Fit graph to viewport (F)">Fit</button>
  <button id="reset-btn" title="Clear selection and filters (Esc)">Reset</button>
- <button id="ghost-btn" title="Toggle: grey-out vs hide filtered elements (G)" class="active">Ghost</button>
+ <button id="ghost-btn"
+  title="Toggle: grey-out vs hide filtered elements (G)"
+  class="active">Ghost</button>
  <button id="labels-btn" title="Toggle edge labels (L)">Edge Labels</button>
  <span class="tb-sep"></span>
- <button id="path-btn" title="Find shortest path: click start node, then end node (P)">Path</button>
+ <button id="path-btn"
+  title="Find shortest path: click start, then end (P)"
+  >Path</button>
  <button id="png-btn" title="Export as PNG">PNG</button>
  <span class="stats" id="stats"></span>
 </div>
 
 <div id="sidebar">
  <input type="text" id="search" placeholder="Search entities&hellip; (/)">
- <div class="filter-header"><h3>Entity Types</h3><span class="filter-toggle" data-target="type-filters">all</span><span class="filter-toggle" data-target="type-filters" data-mode="none">none</span></div>
+ <div class="filter-header"><h3>Entity Types</h3>
+  <span class="filter-toggle"
+   data-target="type-filters">all</span>
+  <span class="filter-toggle"
+   data-target="type-filters"
+   data-mode="none">none</span></div>
  <div id="type-filters"></div>
- <div class="filter-header"><h3>Source Tools</h3><span class="filter-toggle" data-target="tool-filters">all</span><span class="filter-toggle" data-target="tool-filters" data-mode="none">none</span></div>
+ <div class="filter-header"><h3>Source Tools</h3>
+  <span class="filter-toggle"
+   data-target="tool-filters">all</span>
+  <span class="filter-toggle"
+   data-target="tool-filters"
+   data-mode="none">none</span></div>
  <div id="tool-filters"></div>
- <div class="filter-header"><h3>Relationships</h3><span class="filter-toggle" data-target="rel-filters">all</span><span class="filter-toggle" data-target="rel-filters" data-mode="none">none</span></div>
+ <div class="filter-header"><h3>Relationships</h3>
+  <span class="filter-toggle"
+   data-target="rel-filters">all</span>
+  <span class="filter-toggle"
+   data-target="rel-filters"
+   data-mode="none">none</span></div>
  <div id="rel-filters"></div>
 </div>
 
@@ -272,7 +357,11 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#1e1e2
 
 <div id="tip"></div>
 <div id="ctx-menu"></div>
-<div id="path-info"><span id="path-text"></span><span class="path-close" id="path-close">&times;</span><div class="path-steps" id="path-steps"></div></div>
+<div id="path-info">
+<span id="path-text"></span>
+<span class="path-close" id="path-close">&times;</span>
+<div class="path-steps" id="path-steps"></div>
+</div>
 
 <script>
 /* ── Data injected by Python ── */
@@ -281,30 +370,10 @@ var ENTITY_TYPES = __ENTITY_TYPES__;
 var REL_TYPES = __REL_TYPES__;
 var SOURCE_TOOLS = __SOURCE_TOOLS__;
 
-/* ── Visual config ── */
-var TYPE_COLORS = {
-  person:'#89b4fa', organization:'#f38ba8', account:'#a6e3a1',
-  document:'#9399b2', domain:'#cba6f7', email:'#fab387',
-  username:'#94e2d5', phone:'#f9e2af', address:'#eba0ac',
-  property:'#f2cdcd', vehicle:'#74c7ec',
-};
-var TYPE_SHAPES = {
-  person:'ellipse', organization:'round-rectangle', account:'ellipse',
-  document:'rectangle', domain:'diamond', email:'ellipse',
-  username:'ellipse', phone:'ellipse', address:'round-rectangle',
-  property:'round-rectangle', vehicle:'round-rectangle',
-};
-var REL_COLORS = {
-  has_email:'#585b70', has_phone:'#585b70', has_username:'#585b70',
-  has_account:'#585b70', has_address:'#585b70',
-  also_known_as:'#89b4fa',
-  works_at:'#f38ba8', officer_of:'#f38ba8', owns:'#f38ba8',
-  controls:'#f38ba8', affiliated_with:'#f38ba8',
-  donated_to:'#fab387', transacted_with:'#fab387',
-  party_to:'#eba0ac', filed:'#eba0ac',
-  follows:'#a6e3a1', connected_to:'#a6e3a1', mentioned:'#585b70',
-  preceded_by:'#9399b2',
-};
+/* ── Visual config (injected from theme.py) ── */
+var TYPE_COLORS = __TYPE_COLORS__;
+var TYPE_SHAPES = __TYPE_SHAPES__;
+var REL_COLORS = __REL_COLORS__;
 
 /* ── State ── */
 var ghostMode = true;
@@ -363,10 +432,19 @@ var cyStyle = [
   {selector:'.neighbor', style:{'opacity':.85}},
   {selector:'edge.highlight', style:{'opacity':1, 'width':2.5}},
   {selector:'edge.highlight.show-label', style:{'label':'data(type)'}},
-  {selector:'node.path-node', style:{'border-width':3, 'border-color':'#f9e2af', 'opacity':1}},
-  {selector:'node.path-start', style:{'border-width':4, 'border-color':'#a6e3a1', 'opacity':1}},
-  {selector:'node.path-end', style:{'border-width':4, 'border-color':'#f38ba8', 'opacity':1}},
-  {selector:'edge.path-edge', style:{'line-color':'#f9e2af', 'target-arrow-color':'#f9e2af', 'width':3, 'opacity':1, 'z-index':10}},
+  {selector:'node.path-node', style:{
+    'border-width':3, 'border-color':'#f9e2af',
+    'opacity':1}},
+  {selector:'node.path-start', style:{
+    'border-width':4, 'border-color':'#a6e3a1',
+    'opacity':1}},
+  {selector:'node.path-end', style:{
+    'border-width':4, 'border-color':'#f38ba8',
+    'opacity':1}},
+  {selector:'edge.path-edge', style:{
+    'line-color':'#f9e2af',
+    'target-arrow-color':'#f9e2af',
+    'width':3, 'opacity':1, 'z-index':10}},
 ];
 
 /* ── Initialize Cytoscape ── */
@@ -411,7 +489,9 @@ function buildFilters(containerId, items, colorMap, isEdge){
     var count = isEdge ? cy.edges('[type="'+item+'"]').length
                        : (containerId === 'type-filters'
                          ? cy.nodes('[type="'+item+'"]').length
-                         : cy.nodes().filter(function(n){return n.data('tools').indexOf(item)>=0;}).length);
+                         : cy.nodes().filter(function(n){
+                           return n.data('tools').indexOf(item)>=0;
+                         }).length);
     var label = document.createElement('label');
     label.className = 'filter-item' + (isEdge ? ' edge-filter' : '');
     label.innerHTML = '<input type="checkbox" checked data-val="'+item+'">'
@@ -430,17 +510,27 @@ document.querySelectorAll('.filter-toggle').forEach(function(btn){
   btn.addEventListener('click', function(){
     var target = this.dataset.target;
     var none = this.dataset.mode === 'none';
-    document.querySelectorAll('#'+target+' input[type="checkbox"]').forEach(function(cb){ cb.checked = !none; });
+    var sel = '#'+target+' input[type="checkbox"]';
+    document.querySelectorAll(sel).forEach(
+      function(cb){ cb.checked = !none; });
     applyFilters();
   });
 });
 
 /* ── Filter logic — ghost mode vs hide mode ── */
 function applyFilters(){
-  var activeTypes = new Set(), activeTools = new Set(), activeRels = new Set();
-  document.querySelectorAll('#type-filters input:checked').forEach(function(cb){activeTypes.add(cb.dataset.val);});
-  document.querySelectorAll('#tool-filters input:checked').forEach(function(cb){activeTools.add(cb.dataset.val);});
-  document.querySelectorAll('#rel-filters input:checked').forEach(function(cb){activeRels.add(cb.dataset.val);});
+  var activeTypes = new Set();
+  var activeTools = new Set();
+  var activeRels = new Set();
+  document.querySelectorAll(
+    '#type-filters input:checked').forEach(
+    function(cb){activeTypes.add(cb.dataset.val);});
+  document.querySelectorAll(
+    '#tool-filters input:checked').forEach(
+    function(cb){activeTools.add(cb.dataset.val);});
+  document.querySelectorAll(
+    '#rel-filters input:checked').forEach(
+    function(cb){activeRels.add(cb.dataset.val);});
   var q = document.getElementById('search').value.toLowerCase().trim();
 
   cy.batch(function(){
@@ -448,7 +538,9 @@ function applyFilters(){
       var d = n.data();
       var typeOk = activeTypes.has(d.type);
       var toolOk = d.tools.some(function(t){return activeTools.has(t);});
-      var searchOk = !q || d.fullLabel.toLowerCase().indexOf(q)>=0 || d.id.toLowerCase().indexOf(q)>=0;
+      var searchOk = !q
+        || d.fullLabel.toLowerCase().indexOf(q)>=0
+        || d.id.toLowerCase().indexOf(q)>=0;
       var manualHide = hiddenNodes.has(d.id);
       n.removeClass('filtered-out hidden');
       if(manualHide){ n.addClass('hidden'); }
@@ -532,7 +624,10 @@ cy.on('mouseover', 'node', function(evt){
   if(evt.target.hasClass('filtered-out')) return;
   var color = TYPE_COLORS[d.type] || '#585b70';
   var h = '<div class="tip-label">'+escH(d.fullLabel)+'</div>';
-  h += '<span class="tip-badge" style="background:'+color+'22;color:'+color+';border:1px solid '+color+'44">'+d.type+'</span>';
+  h += '<span class="tip-badge" style="background:'
+    +color+'22;color:'+color
+    +';border:1px solid '+color+'44">'
+    +d.type+'</span>';
   h += '<div class="tip-row">Connections: <span>'+evt.target.degree()+'</span></div>';
   /* Show first useful prop */
   if(d.props){
@@ -575,7 +670,9 @@ cy.on('mousemove', function(evt){
 });
 
 function escH(s){
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
 }
 
 /* ── Context menu ── */
@@ -697,7 +794,10 @@ function showDetail(node){
   document.getElementById('detail-label').textContent = d.fullLabel;
   document.getElementById('detail-id').textContent = d.id;
   document.getElementById('detail-badges').innerHTML =
-    '<span class="badge" style="background:'+color+'22;color:'+color+';border:1px solid '+color+'44">'+d.type+'</span>'
+    '<span class="badge" style="background:'
+    +color+'22;color:'+color
+    +';border:1px solid '+color+'44">'
+    +d.type+'</span>'
     + '<span class="degree-badge">'+node.degree()+' connections</span>';
 
   /* Properties */
@@ -716,12 +816,16 @@ function showDetail(node){
       /* Linkify URLs */
       if(typeof vs === 'string' && vs.match(/^https?:\/\//)){
         var display = vs.length > 50 ? vs.substring(0,47)+'...' : vs;
-        vs = '<a href="'+escH(vs)+'" target="_blank" rel="noopener" title="'+escH(vs)+'">'+escH(display)+'</a>';
+        vs = '<a href="'+escH(vs)
+          +'" target="_blank" rel="noopener" title="'
+          +escH(vs)+'">'+escH(display)+'</a>';
       }
       tbody += '<tr><th>'+escH(k)+'</th><td>'+vs+'</td></tr>';
     });
   }
-  document.getElementById('detail-props').innerHTML = tbody || '<tr><td colspan="2" style="color:#585b70">None</td></tr>';
+  document.getElementById('detail-props').innerHTML =
+    tbody || '<tr><td colspan="2"'
+    +' style="color:#585b70">None</td></tr>';
 
   /* Connections — grouped by relationship type */
   var connsByType = {};
@@ -738,7 +842,10 @@ function showDetail(node){
   var conns = '';
   Object.keys(connsByType).sort().forEach(function(rel){
     var relColor = REL_COLORS[rel] || '#585b70';
-    conns += '<div class="conn-group-header"><span class="dot" style="background:'+relColor+'"></span>'+rel+' ('+connsByType[rel].length+')</div>';
+    conns += '<div class="conn-group-header">'
+      +'<span class="dot" style="background:'
+      +relColor+'"></span>'
+      +rel+' ('+connsByType[rel].length+')</div>';
     connsByType[rel].forEach(function(c){
       var otherColor = TYPE_COLORS[c.other.data('type')] || '#585b70';
       var dimClass = c.other.hasClass('filtered-out') ? ' style="opacity:.4"' : '';
@@ -750,7 +857,8 @@ function showDetail(node){
         + '</div>';
     });
   });
-  document.getElementById('detail-conns').innerHTML = conns || '<span style="color:#585b70">None</span>';
+  document.getElementById('detail-conns').innerHTML =
+    conns || '<span style="color:#585b70">None</span>';
 
   /* Make connections clickable */
   document.querySelectorAll('.conn-item').forEach(function(el){
@@ -767,7 +875,9 @@ function showDetail(node){
   /* Sources */
   var tools = '';
   d.tools.forEach(function(t){ tools += '<span class="tool-tag">'+t+'</span>'; });
-  document.getElementById('detail-tools').innerHTML = tools || '<span style="color:#585b70">Unknown</span>';
+  document.getElementById('detail-tools').innerHTML =
+    tools || '<span style="color:#585b70">'
+    +'Unknown</span>';
 
   document.getElementById('app').classList.add('detail-open');
 }
@@ -808,7 +918,9 @@ document.getElementById('fit-btn').addEventListener('click', function(){cy.fit(n
 
 document.getElementById('reset-btn').addEventListener('click', function(){
   document.getElementById('search').value = '';
-  document.querySelectorAll('#sidebar input[type="checkbox"]').forEach(function(cb){cb.checked=true;});
+  document.querySelectorAll(
+    '#sidebar input[type="checkbox"]').forEach(
+    function(cb){cb.checked=true;});
   cy.elements().removeClass('highlight neighbor dimmed');
   hiddenNodes.clear();
   applyFilters();
@@ -974,7 +1086,13 @@ document.addEventListener('keydown', function(e){
     document.getElementById('app').classList.remove('detail-open');
     closeCtxMenu();
     hideTip();
-    if(pathMode){ pathMode = false; pathBtn.classList.remove('active'); clearPath(); pathInfo.style.display = 'none'; pathStart = null; }
+    if(pathMode){
+      pathMode = false;
+      pathBtn.classList.remove('active');
+      clearPath();
+      pathInfo.style.display = 'none';
+      pathStart = null;
+    }
   }
   else if(e.key === 'p' || e.key === 'P'){ togglePathMode(); }
   else if(e.key === 'f' || e.key === 'F'){ cy.fit(null, 30); }

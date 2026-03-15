@@ -22,6 +22,8 @@ class EntityType(str, Enum):
     ADDRESS = "address"
     ACCOUNT = "account"           # Social media or service account
     DOCUMENT = "document"         # Court filing, SEC filing, etc.
+    EVENT = "event"               # Incident, rally, meeting, transaction
+    LOCATION = "location"         # Geographic place (not a mailing address)
     PROPERTY = "property"
     VEHICLE = "vehicle"
 
@@ -56,6 +58,11 @@ class RelationType(str, Enum):
     FOLLOWS = "follows"
     CONNECTED_TO = "connected_to"
     MENTIONED = "mentioned"
+
+    # Spatial
+    PARTICIPATED_IN = "participated_in"  # Person/org participated in event
+    OCCURRED_AT = "occurred_at"          # Event occurred at location
+    LOCATED_AT = "located_at"            # Entity is situated at location
 
     # Temporal
     PRECEDED_BY = "preceded_by"    # For timeline events

@@ -1,8 +1,9 @@
 """Tests for the Wayback Google Analytics adapter — tracking ID discovery."""
 
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from osint_agent.models import EntityType, RelationType
 from osint_agent.tools.wayback_ga import WaybackGaAdapter, _extract_domain
@@ -182,11 +183,11 @@ async def test_run_normalizes_bare_domain(adapter, mock_ga_results):
         "wayback_google_analytics.scraper": mock_scraper,
     }):
         with patch("osint_agent.tools.wayback_ga.aiohttp.ClientSession"):
-            finding = await adapter.run(url="example.com")
+            _finding = await adapter.run(url="example.com")
 
     # Should have passed https://example.com to the library
     call_args = mock_get_codes.call_args
-    urls_arg = call_args[1].get("urls") if call_args[1] else call_args[0][1]
+    _urls_arg = call_args[1].get("urls") if call_args[1] else call_args[0][1]
     # The library receives a list with the normalized URL
     # (The adapter passes [url] where url = "https://example.com")
 

@@ -170,7 +170,11 @@ class OpenFECAdapter(ToolAdapter):
         return Finding(
             entities=entities,
             relationships=relationships,
-            notes=f"OpenFEC: '{name}' made {len(results)} contributions totaling ${total_donated:,.2f} to {len(seen_committees)} committees",
+            notes=(
+                f"OpenFEC: '{name}' made {len(results)}"
+                f" contributions totaling ${total_donated:,.2f}"
+                f" to {len(seen_committees)} committees"
+            ),
         )
 
     async def _search_committees(self, query: str, max_results: int) -> Finding:

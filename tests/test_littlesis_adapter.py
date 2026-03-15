@@ -1,10 +1,11 @@
 """Tests for the LittleSis adapter — power network mapping."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from osint_agent.tools.littlesis import LittleSisAdapter, _REL_CATEGORIES, _TYPE_MAP
+import pytest
+
 from osint_agent.models import EntityType, RelationType
+from osint_agent.tools.littlesis import _REL_CATEGORIES, _TYPE_MAP, LittleSisAdapter
 
 
 @pytest.fixture

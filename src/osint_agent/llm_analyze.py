@@ -293,11 +293,14 @@ async def analyze_via_api(
     )
 
     meta = json.loads(export_json)["meta"]
-    print(f"Exported {meta['entity_count']} entities for analysis...")
+    from osint_agent import console
+    console.status(
+        f"Exported {meta['entity_count']} entities for analysis...",
+    )
 
     # Step 2: Call LLM
     user_message = _USER_MESSAGE_PREFIX + export_json
-    print(f"Calling {provider}/{model}...")
+    console.status(f"Calling {provider}/{model}...")
 
     if provider == "anthropic":
         raw_response = _call_anthropic(api_key, model, user_message)

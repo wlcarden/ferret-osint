@@ -35,8 +35,8 @@ class HoleheAdapter(ToolAdapter):
 
     def is_available(self) -> bool:
         try:
-            from holehe.core import import_submodules, get_functions
             from holehe import modules
+            from holehe.core import get_functions, import_submodules
             return True
         except ImportError:
             return False
@@ -50,8 +50,8 @@ class HoleheAdapter(ToolAdapter):
         - HAS_ACCOUNT relationships
         - Additional EMAIL entities if recovery emails are discovered
         """
-        from holehe.core import import_submodules, get_functions, launch_module
         from holehe import modules as holehe_modules
+        from holehe.core import get_functions, import_submodules, launch_module
 
         submodules = import_submodules(holehe_modules)
         fns = get_functions(submodules)

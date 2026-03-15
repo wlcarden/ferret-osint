@@ -1,16 +1,17 @@
 """Tests for the IP WHOIS adapter — IP address to ASN/organization lookup."""
 
 import sys
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from osint_agent.models import EntityType, RelationType
 from osint_agent.tools.ip_whois import (
     IpWhoisAdapter,
     _extract_address,
-    _extract_phone,
     _extract_email,
+    _extract_phone,
 )
-from osint_agent.models import EntityType, RelationType
 
 
 @pytest.fixture
@@ -350,7 +351,11 @@ async def test_run_skips_objects_without_contact_name():
         "asn_description": "TEST-ASN",
         "asn_country_code": "US",
         "asn_cidr": "10.0.0.0/8",
-        "network": {"name": "TEST-NET", "start_address": "10.0.0.0", "end_address": "10.255.255.255"},
+        "network": {
+            "name": "TEST-NET",
+            "start_address": "10.0.0.0",
+            "end_address": "10.255.255.255",
+        },
         "objects": {
             "EMPTY-HANDLE": {
                 "contact": {

@@ -1,7 +1,6 @@
 """Common Crawl tool adapter — web archive index search."""
 
 import hashlib
-import re
 
 import httpx
 

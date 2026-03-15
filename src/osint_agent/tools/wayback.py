@@ -49,7 +49,6 @@ class WaybackAdapter(ToolAdapter):
                   "oldest" for first archived snapshot,
                   "snapshots" for CDX index of all snapshots.
         """
-        import waybackpy
 
         user_agent = "OSINT-Agent/0.1"
 
@@ -142,7 +141,11 @@ class WaybackAdapter(ToolAdapter):
 
         return Finding(
             entities=[entity],
-            notes=f"Wayback Machine {'newest' if newest else 'oldest'} snapshot for '{url}': {archive_url}",
+            notes=(
+                f"Wayback Machine"
+                f" {'newest' if newest else 'oldest'}"
+                f" snapshot for '{url}': {archive_url}"
+            ),
         )
 
     def _get_cdx_snapshots(self, url: str, user_agent: str) -> Finding:
@@ -160,7 +163,11 @@ class WaybackAdapter(ToolAdapter):
         entities = []
         for i, snap in enumerate(snapshots[:50]):  # Cap at 50 to avoid flooding
             archive_url = snap.archive_url
-            timestamp = snap.datetime_timestamp.isoformat() if hasattr(snap, "datetime_timestamp") else str(snap.timestamp)
+            timestamp = (
+                snap.datetime_timestamp.isoformat()
+                if hasattr(snap, "datetime_timestamp")
+                else str(snap.timestamp)
+            )
             status = getattr(snap, "statuscode", "")
             mimetype = getattr(snap, "mimetype", "")
 
@@ -181,7 +188,10 @@ class WaybackAdapter(ToolAdapter):
 
         return Finding(
             entities=entities,
-            notes=f"Wayback CDX: {len(snapshots)} total snapshots for '{url}' (showing {len(entities)})",
+            notes=(
+                f"Wayback CDX: {len(snapshots)} total snapshots"
+                f" for '{url}' (showing {len(entities)})"
+            ),
         )
 
 

@@ -4,8 +4,8 @@ import os
 
 from neo4j import AsyncGraphDatabase
 
-from osint_agent.models import Entity, Relationship
 from osint_agent.graph.store import GraphStore
+from osint_agent.models import Entity, Relationship
 
 
 class Neo4jStore(GraphStore):

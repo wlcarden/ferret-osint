@@ -142,7 +142,7 @@ async def ingest_extraction(
     for i, item in enumerate(data.get("extracted_entities", [])):
         try:
             entity_type = EntityType(item["entity_type"])
-        except (ValueError, KeyError) as exc:
+        except (ValueError, KeyError):
             errors.append(
                 f"Entity {i}: invalid entity_type "
                 f"'{item.get('entity_type', '<missing>')}' — skipped"
@@ -171,7 +171,7 @@ async def ingest_extraction(
     for i, item in enumerate(data.get("extracted_relationships", [])):
         try:
             relation_type = RelationType(item["relation_type"])
-        except (ValueError, KeyError) as exc:
+        except (ValueError, KeyError):
             errors.append(
                 f"Relationship {i}: invalid relation_type "
                 f"'{item.get('relation_type', '<missing>')}' — skipped"
@@ -197,8 +197,10 @@ async def ingest_extraction(
         ))
 
     # Print validation errors
+    from osint_agent import console
+
     for err in errors:
-        print(f"  WARN: {err}")
+        console.warning(err)
 
     # Ingest as a Finding
     finding = Finding(
@@ -217,7 +219,9 @@ async def ingest_extraction(
         if not lead_type or not value:
             continue
         if lead_type not in _LEAD_TYPES:
-            print(f"  WARN: unknown lead_type '{lead_type}' — skipped")
+            console.warning(
+                f"unknown lead_type '{lead_type}' -- skipped",
+            )
             continue
         explicit_keys.add((lead_type, value))
         await store.add_lead(

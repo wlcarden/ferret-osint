@@ -50,6 +50,7 @@ class DocumentCloudAdapter(ToolAdapter):
             per_page: Results per page (25 without auth, up to 100 with auth).
         """
         import asyncio
+
         import documentcloud
 
         username = os.environ.get("DOCUMENTCLOUD_USERNAME", "")

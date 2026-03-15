@@ -13,13 +13,13 @@ The runner handles:
 import asyncio
 from datetime import UTC, datetime
 
+from osint_agent import console
 from osint_agent.cache import ToolCache
 from osint_agent.graph.resolver import EntityResolver
 from osint_agent.graph.sqlite_store import SqliteStore
-from osint_agent.models import Entity, ErrorCategory, Finding, ToolError
+from osint_agent.models import ErrorCategory, Finding, ToolError
 from osint_agent.playbooks.base import Lead, Playbook, PlaybookResult, ToolStep
-from osint_agent.tools.registry import INPUT_ROUTING, ToolRegistry
-
+from osint_agent.tools.registry import ToolRegistry
 
 # Maps lead_type to the tools and kwargs needed to follow up
 _LEAD_TOOL_MAP = {
@@ -101,14 +101,16 @@ async def run_playbook(
     # Create investigation
     inv_name = investigation_name or f"{playbook.name}: {seed}"
     result.investigation_id = await store.create_investigation(inv_name)
-    _print(f"Investigation #{result.investigation_id}: {inv_name}")
+    console.heading(
+        f"Investigation #{result.investigation_id}: {inv_name}",
+    )
 
     # Initialize cache if not provided
     if cache is None:
         cache = ToolCache()
 
     # Phase 1: Run playbook steps
-    _print(f"\n--- Phase 1: {playbook.description} ---")
+    console.phase_heading(f"Phase 1: {playbook.description}")
     steps = playbook.steps(seed, **kwargs)
     phase1_findings = await _run_steps(steps, registry, cache, result)
 
@@ -128,7 +130,7 @@ async def run_playbook(
             notes=lead.notes,
         )
     result.leads.extend(leads)
-    _print(f"  Generated {len(leads)} leads")
+    console.status(f"Generated {len(leads)} leads")
 
     # Phase 2: Follow leads
     if follow_leads and leads and max_depth > 0:
@@ -150,31 +152,28 @@ async def run_playbook(
         all_entities.extend(finding.entities)
 
     if len(all_entities) >= 2:
-        _print("\n--- Entity Resolution ---")
+        console.phase_heading("Entity Resolution")
         resolver = EntityResolver()
         aka_rels = resolver.resolve(all_entities)
         if aka_rels:
-            _print(f"  Found {len(aka_rels)} cross-source links")
             for rel in aka_rels:
                 await store.merge_relationship(rel)
-                conf = rel.properties.get("confidence", 0)
-                level = "HIGH" if conf >= 0.8 else "MEDIUM"
-                src_label = rel.properties.get("source_label", rel.source_id)
-                tgt_label = rel.properties.get("target_label", rel.target_id)
-                _print(f"    {src_label} <-> {tgt_label} [{level} {conf:.0%}]")
+            console.entity_resolution_table(aka_rels)
 
     # Clean up cache
     if cache is not None:
         expired = await cache.clear_expired()
         if expired:
-            _print(f"  Cleared {expired} expired cache entries")
+            console.status(
+                f"Cleared {expired} expired cache entries",
+            )
 
     # Final counts
     result.entity_count = await store.entity_count()
     result.relationship_count = await store.relationship_count()
     result.completed_at = datetime.now(UTC).isoformat()
 
-    _print(f"\n{result.summary()}")
+    console.status(result.summary())
     return result
 
 
@@ -189,13 +188,16 @@ async def _run_steps(
     for step in steps:
         tool = registry.get(step.tool_name)
         if not tool:
-            _print(f"  SKIP {step.description} ({step.tool_name} not registered)")
+            console.step_status(
+                "SKIP", step.description,
+                f"{step.tool_name} not registered",
+            )
             continue
         ok, reason = tool.check_availability()
         if not ok:
-            _print(f"  SKIP {step.description} — {reason}")
+            console.step_status("SKIP", step.description, reason)
             continue
-        _print(f"  RUN  {step.description}")
+        console.step_status("RUN", step.description)
         tasks.append(_run_one_step(tool, step, cache))
 
     if not tasks:
@@ -205,7 +207,7 @@ async def _run_steps(
     findings = []
     for i, r in enumerate(results):
         if isinstance(r, Exception):
-            _print(f"  ERROR: {r}")
+            console.error(str(r))
             if result is not None:
                 result.errors.append(ToolError(
                     tool="unknown",
@@ -230,7 +232,7 @@ async def _run_one_step(
     if cache is not None:
         cached = await cache.get(step.tool_name, step.kwargs)
         if cached is not None:
-            _print(f"  CACHE {step.description}")
+            console.step_status("CACHE", step.description)
             return cached
 
     # CourtListener uses search_party() instead of run()
@@ -277,10 +279,12 @@ async def _follow_leads(
     if not actionable:
         return
 
-    _print(f"\n--- Phase 2 (depth {depth}): Following {len(actionable)} leads ---")
+    console.phase_heading(
+        f"Phase 2 (depth {depth}): Following {len(actionable)} leads",
+    )
 
     new_findings: list[Finding] = []
-    new_leads: list[Lead] = []
+    _new_leads: list[Lead] = []
 
     for lead in actionable:
         tool_configs = _LEAD_TOOL_MAP.get(lead.lead_type, [])
@@ -325,7 +329,9 @@ async def _follow_leads(
             notes=lead.notes,
         )
     result.leads.extend(novel_leads)
-    _print(f"  Generated {len(novel_leads)} new leads from follow-up")
+    console.status(
+        f"Generated {len(novel_leads)} new leads from follow-up",
+    )
 
     # Recurse if we have depth budget
     if novel_leads and depth < max_depth:
@@ -342,13 +348,6 @@ async def _follow_leads(
         )
 
 
-def _print(msg: str) -> None:
-    """Print progress output."""
-    print(msg)
-
-
 def _print_error(error: ToolError) -> None:
     """Print a structured error with actionable suggestion."""
-    _print(f"  ERROR [{error.category.value}] {error.tool}: {error.message}")
-    if error.suggestion:
-        _print(f"    -> {error.suggestion}")
+    console.tool_error(error)

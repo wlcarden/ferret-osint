@@ -12,6 +12,6 @@ orchestrates. The agent picks the right playbook, provides the seed input,
 and interprets the results — but the mechanical tool-chaining is code.
 """
 
-from osint_agent.playbooks.base import Playbook, Lead, PlaybookResult
+from osint_agent.playbooks.base import Lead, Playbook, PlaybookResult
 
 __all__ = ["Playbook", "Lead", "PlaybookResult"]

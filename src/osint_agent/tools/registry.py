@@ -1,49 +1,59 @@
 """Tool registry — discovers, configures, and provides access to all adapters."""
 
 from osint_agent.tools.base import ToolAdapter
-from osint_agent.tools.maigret import MaigretAdapter
-from osint_agent.tools.holehe_adapter import HoleheAdapter
-from osint_agent.tools.edgar import EdgarAdapter
-from osint_agent.tools.courtlistener import CourtListenerAdapter
-from osint_agent.tools.openfec import OpenFECAdapter
-from osint_agent.tools.wayback import WaybackAdapter
-from osint_agent.tools.exiftool import ExifToolAdapter
-from osint_agent.tools.phoneinfoga import PhoneInfogaAdapter
-from osint_agent.tools.theharvester import TheHarvesterAdapter
-from osint_agent.tools.ddg_search import DdgSearchAdapter
-from osint_agent.tools.usaspending import UsaSpendingAdapter
-from osint_agent.tools.whois_lookup import WhoisAdapter
-from osint_agent.tools.patents import PatentsAdapter
-from osint_agent.tools.sbir import SbirAdapter
-from osint_agent.tools.commoncrawl import CommonCrawlAdapter
-from osint_agent.tools.peoplesearch import PeopleSearchAdapter
-from osint_agent.tools.reddit import RedditAdapter
-from osint_agent.tools.gravatar import GravatarAdapter
-from osint_agent.tools.steam import SteamAdapter
-from osint_agent.tools.ytdlp import YtDlpAdapter
-from osint_agent.tools.crtsh import CrtshAdapter
-from osint_agent.tools.dns_enum import DnsEnumAdapter
-from osint_agent.tools.ip_whois import IpWhoisAdapter
-from osint_agent.tools.crosslinked import CrossLinkedAdapter
 from osint_agent.tools.builtwith_adapter import BuiltWithAdapter
-from osint_agent.tools.littlesis import LittleSisAdapter
-from osint_agent.tools.openpolicedata import OpenPoliceDataAdapter
-from osint_agent.tools.propublica_nonprofit import ProPublicaNonprofitAdapter
-from osint_agent.tools.wayback_ga import WaybackGaAdapter
-from osint_agent.tools.documentcloud import DocumentCloudAdapter
-from osint_agent.tools.fara import FaraAdapter
-from osint_agent.tools.muckrock import MuckRockAdapter
+from osint_agent.tools.commoncrawl import CommonCrawlAdapter
 from osint_agent.tools.congress import CongressAdapter
-
+from osint_agent.tools.courtlistener import CourtListenerAdapter
+from osint_agent.tools.crosslinked import CrossLinkedAdapter
+from osint_agent.tools.crtsh import CrtshAdapter
+from osint_agent.tools.ddg_search import DdgSearchAdapter
+from osint_agent.tools.dns_enum import DnsEnumAdapter
+from osint_agent.tools.documentcloud import DocumentCloudAdapter
+from osint_agent.tools.edgar import EdgarAdapter
+from osint_agent.tools.exiftool import ExifToolAdapter
+from osint_agent.tools.fara import FaraAdapter
+from osint_agent.tools.gravatar import GravatarAdapter
+from osint_agent.tools.holehe_adapter import HoleheAdapter
+from osint_agent.tools.ip_whois import IpWhoisAdapter
+from osint_agent.tools.littlesis import LittleSisAdapter
+from osint_agent.tools.maigret import MaigretAdapter
+from osint_agent.tools.muckrock import MuckRockAdapter
+from osint_agent.tools.openfec import OpenFECAdapter
+from osint_agent.tools.openpolicedata import OpenPoliceDataAdapter
+from osint_agent.tools.patents import PatentsAdapter
+from osint_agent.tools.peoplesearch import PeopleSearchAdapter
+from osint_agent.tools.phoneinfoga import PhoneInfogaAdapter
+from osint_agent.tools.propublica_nonprofit import ProPublicaNonprofitAdapter
+from osint_agent.tools.reddit import RedditAdapter
+from osint_agent.tools.sbir import SbirAdapter
+from osint_agent.tools.steam import SteamAdapter
+from osint_agent.tools.theharvester import TheHarvesterAdapter
+from osint_agent.tools.usaspending import UsaSpendingAdapter
+from osint_agent.tools.wayback import WaybackAdapter
+from osint_agent.tools.wayback_ga import WaybackGaAdapter
+from osint_agent.tools.whois_lookup import WhoisAdapter
+from osint_agent.tools.ytdlp import YtDlpAdapter
 
 # Maps input types to which tools can handle them
 INPUT_ROUTING = {
     "username": ["maigret", "reddit", "steam", "ddg_search"],
     "email": ["holehe", "gravatar", "theharvester", "maigret"],
     "phone": ["phoneinfoga"],
-    "domain": ["theharvester", "whois", "crtsh", "dns_enum", "builtwith", "wayback_ga", "commoncrawl", "ddg_search"],
-    "company": ["edgar", "usaspending", "sbir", "patents", "crosslinked", "littlesis", "propublica_nonprofit", "documentcloud", "fara", "muckrock", "ddg_search"],
-    "person_name": ["openfec", "courtlistener", "edgar", "usaspending", "sbir", "patents", "peoplesearch", "littlesis", "documentcloud", "fara", "congress", "ddg_search"],
+    "domain": [
+        "theharvester", "whois", "crtsh", "dns_enum",
+        "builtwith", "wayback_ga", "commoncrawl", "ddg_search",
+    ],
+    "company": [
+        "edgar", "usaspending", "sbir", "patents",
+        "crosslinked", "littlesis", "propublica_nonprofit",
+        "documentcloud", "fara", "muckrock", "ddg_search",
+    ],
+    "person_name": [
+        "openfec", "courtlistener", "edgar", "usaspending",
+        "sbir", "patents", "peoplesearch", "littlesis",
+        "documentcloud", "fara", "congress", "ddg_search",
+    ],
     "police_agency": ["openpolicedata"],
     "url": ["wayback", "commoncrawl", "yt-dlp"],
     "ip": ["ip_whois"],

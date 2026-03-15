@@ -1,1 +1,4 @@
-"""Tool adapters — each module wraps an external OSINT tool and normalizes output to Finding objects."""
+"""Tool adapters — each module wraps an external OSINT tool.
+
+Each adapter normalizes output to Finding objects.
+"""

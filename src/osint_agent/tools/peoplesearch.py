@@ -17,8 +17,8 @@ import asyncio
 import json
 import random
 import re
-from dataclasses import dataclass, field
-from urllib.parse import quote, quote_plus
+from dataclasses import dataclass
+from urllib.parse import quote_plus
 
 from osint_agent.models import (
     Entity,
@@ -29,7 +29,6 @@ from osint_agent.models import (
     Source,
 )
 from osint_agent.tools.base import ToolAdapter
-
 
 # US state name → abbreviation mapping for URL construction
 _STATE_ABBREVS = {
@@ -436,7 +435,9 @@ class PeopleSearchAdapter(ToolAdapter):
         # (multiple Thomas Jacobs may appear — each is a distinct record)
         rec_name = record.get("name", "")
         if rec_name:
-            rec_id = f"person:peoplesearch:{rec_name.lower().replace(' ', '_')}_{hash(str(record)) % 10**8}"
+            slug = rec_name.lower().replace(' ', '_')
+            h = hash(str(record)) % 10**8
+            rec_id = f"person:peoplesearch:{slug}_{h}"
             props = {
                 "source_site": site_name,
                 "source_system": "peoplesearch",
@@ -666,7 +667,12 @@ def _parse_html_generic(html: str) -> list[dict] | None:
 
     # Look for card/record containers
     card_patterns = [
-        re.compile(r'<div[^>]*class="[^"]*(?:card-summary|people-record|card-block)[^"]*"[^>]*>(.*?)</div>\s*</div>', re.DOTALL),
+        re.compile(
+            r'<div[^>]*class="[^"]*'
+            r'(?:card-summary|people-record|card-block)'
+            r'[^"]*"[^>]*>(.*?)</div>\s*</div>',
+            re.DOTALL,
+        ),
         re.compile(r'<article[^>]*>(.*?)</article>', re.DOTALL),
     ]
 

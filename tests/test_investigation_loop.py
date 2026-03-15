@@ -1,9 +1,10 @@
 """Tests for the autonomous investigation loop."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from osint_agent.models import Entity, EntityType, Finding, Relationship, RelationType
+import pytest
+
+from osint_agent.models import Entity, EntityType, Finding
 from osint_agent.playbooks.base import Lead, PlaybookResult, ToolStep
 from osint_agent.playbooks.loop import (
     DEFAULT_COMPLETENESS,
@@ -16,7 +17,6 @@ from osint_agent.playbooks.loop import (
     _step_input_value,
     run_investigation_loop,
 )
-
 
 # ------------------------------------------------------------------
 # LoopConfig defaults
@@ -427,7 +427,7 @@ async def test_loop_skips_tried_tools():
     ])
     store.pending_lead_count = AsyncMock(return_value=0)
 
-    result = await run_investigation_loop(
+    _result = await run_investigation_loop(
         playbook=pb,
         seed="user1",
         registry=registry,
@@ -473,7 +473,7 @@ async def test_loop_detects_stale_rounds():
     store.get_leads = AsyncMock(return_value=[lead_row])
     store.pending_lead_count = AsyncMock(return_value=0)
 
-    result = await run_investigation_loop(
+    _result = await run_investigation_loop(
         playbook=pb,
         seed="user1",
         registry=registry,

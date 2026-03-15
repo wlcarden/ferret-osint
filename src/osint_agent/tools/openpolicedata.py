@@ -64,6 +64,7 @@ class OpenPoliceDataAdapter(ToolAdapter):
                         If empty, returns a catalog of available data.
         """
         import asyncio
+
         import openpolicedata as opd
 
         loop = asyncio.get_event_loop()
@@ -122,7 +123,8 @@ class OpenPoliceDataAdapter(ToolAdapter):
             return finding
 
         # Otherwise, catalog what's available.
-        available = matches[["TableType", "Year", "coverage_start", "coverage_end"]].drop_duplicates()
+        cols = ["TableType", "Year", "coverage_start", "coverage_end"]
+        available = matches[cols].drop_duplicates()
         table_types = sorted(available["TableType"].unique().tolist())
 
         # Create document entities for each available dataset.
@@ -137,8 +139,16 @@ class OpenPoliceDataAdapter(ToolAdapter):
                 properties={
                     "table_type": tt,
                     "years_available": years if years else None,
-                    "coverage_start": str(tt_rows["coverage_start"].min()) if tt_rows["coverage_start"].notna().any() else None,
-                    "coverage_end": str(tt_rows["coverage_end"].max()) if tt_rows["coverage_end"].notna().any() else None,
+                    "coverage_start": (
+                        str(tt_rows["coverage_start"].min())
+                        if tt_rows["coverage_start"].notna().any()
+                        else None
+                    ),
+                    "coverage_end": (
+                        str(tt_rows["coverage_end"].max())
+                        if tt_rows["coverage_end"].notna().any()
+                        else None
+                    ),
                 },
                 sources=[_SOURCE()],
             )
@@ -170,6 +180,7 @@ class OpenPoliceDataAdapter(ToolAdapter):
     ) -> Finding:
         """Fetch actual records from a specific table type."""
         import asyncio
+
         import openpolicedata as opd
 
         tt_matches = matches[
@@ -217,7 +228,11 @@ class OpenPoliceDataAdapter(ToolAdapter):
         # Extract summary statistics for key columns.
         for col in df.columns:
             col_lower = col.lower()
-            if any(k in col_lower for k in ("race", "ethnicity", "gender", "sex", "force_type", "reason", "disposition")):
+            demo_keys = (
+                "race", "ethnicity", "gender", "sex",
+                "force_type", "reason", "disposition",
+            )
+            if any(k in col_lower for k in demo_keys):
                 try:
                     counts = df[col].value_counts().head(10).to_dict()
                     props[f"breakdown_{col}"] = {str(k): int(v) for k, v in counts.items()}

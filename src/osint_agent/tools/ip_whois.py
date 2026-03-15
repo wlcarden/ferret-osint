@@ -42,10 +42,11 @@ class IpWhoisAdapter(ToolAdapter):
             ip: IPv4 or IPv6 address.
         """
         import asyncio
+
         from ipwhois import IPWhois
         from ipwhois.exceptions import (
-            IPDefinedError,
             ASNRegistryError,
+            IPDefinedError,
             WhoisLookupError,
         )
 
@@ -86,7 +87,10 @@ class IpWhoisAdapter(ToolAdapter):
                     "asn_country": asn_country,
                     "network_cidr": result.get("asn_cidr"),
                     "network_name": network.get("name"),
-                    "network_range": f"{network.get('start_address', '')} - {network.get('end_address', '')}",
+                    "network_range": (
+                        f"{network.get('start_address', '')}"
+                        f" - {network.get('end_address', '')}"
+                    ),
                 }.items() if v
             },
             sources=[_SOURCE()],

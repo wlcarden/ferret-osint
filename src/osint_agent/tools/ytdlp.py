@@ -5,7 +5,6 @@ YouTube and 1000+ other sites without downloading video content.
 No API key or authentication required.
 """
 
-import json
 import logging
 
 from osint_agent.models import (
@@ -37,6 +36,7 @@ class YtDlpAdapter(ToolAdapter):
             url: YouTube (or other supported site) URL.
         """
         import asyncio
+
         import yt_dlp
 
         opts = {

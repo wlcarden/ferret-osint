@@ -1,13 +1,9 @@
 """Tests for the Obsidian vault exporter."""
 
-import textwrap
-from pathlib import Path
 
-import pytest
 
 from osint_agent.models import Entity, Relationship, Source
 from osint_agent.vault_export import VaultExporter, _safe_filename
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -189,7 +185,7 @@ class TestVaultExporter:
             ),
         ]
         exporter = VaultExporter()
-        summary = exporter.export_from_data(entities, [], tmp_path, "Test")
+        _summary = exporter.export_from_data(entities, [], tmp_path, "Test")
 
         assert (tmp_path / "person" / "John Smith (person).md").exists()
         assert (tmp_path / "organization" / "John Smith (organization).md").exists()
