@@ -1,0 +1,417 @@
+"""Tests for the WHOIS lookup adapter — domain registration and ownership data."""
+
+import sys
+from datetime import datetime
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from osint_agent.models import EntityType, RelationType
+from osint_agent.tools.whois_lookup import (
+    WhoisAdapter,
+    _is_privacy_redacted,
+    _normalize_date,
+    _normalize_name,
+)
+
+
+def _mock_whois_entry(**overrides):
+    """Create a mock WhoisEntry with sensible defaults."""
+    defaults = {
+        "registrar": "Example Registrar Inc.",
+        "creation_date": datetime(2020, 1, 15, 12, 0, 0),
+        "expiration_date": datetime(2025, 1, 15, 12, 0, 0),
+        "updated_date": datetime(2024, 6, 1, 8, 30, 0),
+        "name_servers": ["NS1.EXAMPLE.COM", "NS2.EXAMPLE.COM"],
+        "registrant_name": "Jane Doe",
+        "registrant_org": "Doe Industries LLC",
+        "registrant_country": "US",
+        "registrant_state": "CA",
+        "registrant_city": "San Francisco",
+        "emails": ["admin@example.com", "tech@example.com"],
+        "dnssec": "unsigned",
+        "status": [
+            "clientTransferProhibited https://icann.org/epp#clientTransferProhibited",
+        ],
+        "org": None,
+        "name": None,
+    }
+    defaults.update(overrides)
+    entry = MagicMock()
+    for attr, value in defaults.items():
+        setattr(entry, attr, value)
+    return entry
+
+
+@pytest.fixture
+def adapter():
+    return WhoisAdapter()
+
+
+# ------------------------------------------------------------------
+# Helper: _is_privacy_redacted
+# ------------------------------------------------------------------
+
+def test_privacy_redacted_detects_common_services():
+    assert _is_privacy_redacted("REDACTED FOR PRIVACY") is True
+    assert _is_privacy_redacted("WhoisGuard Protected") is True
+    assert _is_privacy_redacted("Domains By Proxy, LLC") is True
+    assert _is_privacy_redacted("Contact Privacy Inc.") is True
+    assert _is_privacy_redacted("Data Protected") is True
+    assert _is_privacy_redacted("Identity Protect Limited") is True
+    assert _is_privacy_redacted("WITHHELD FOR PRIVACY") is True
+    assert _is_privacy_redacted("NOT DISCLOSED") is True
+
+
+def test_privacy_redacted_false_for_real_names():
+    assert _is_privacy_redacted("Acme Corporation") is False
+    assert _is_privacy_redacted("Jane Doe") is False
+    assert _is_privacy_redacted("Google LLC") is False
+
+
+def test_privacy_redacted_empty_or_none():
+    assert _is_privacy_redacted("") is True
+    assert _is_privacy_redacted(None) is True
+
+
+# ------------------------------------------------------------------
+# Helper: _normalize_date
+# ------------------------------------------------------------------
+
+def test_normalize_date_single_datetime():
+    assert _normalize_date(datetime(2023, 5, 20, 14, 30)) == "2023-05-20T14:30:00"
+
+
+def test_normalize_date_list_takes_first():
+    dates = [datetime(2020, 1, 1), datetime(2021, 1, 1)]
+    assert _normalize_date(dates) == "2020-01-01T00:00:00"
+
+
+def test_normalize_date_none():
+    assert _normalize_date(None) is None
+
+
+def test_normalize_date_empty_list():
+    assert _normalize_date([]) is None
+
+
+def test_normalize_date_string_passthrough():
+    assert _normalize_date("2023-01-01") == "2023-01-01"
+
+
+# ------------------------------------------------------------------
+# Helper: _normalize_name
+# ------------------------------------------------------------------
+
+def test_normalize_name_basic():
+    assert _normalize_name("Jane Doe") == "jane_doe"
+
+
+def test_normalize_name_strips_whitespace():
+    assert _normalize_name("  Test Corp  ") == "test_corp"
+
+
+def test_normalize_name_collapses_multiple_spaces():
+    assert _normalize_name("A  B   C") == "a_b_c"
+
+
+# ------------------------------------------------------------------
+# Availability
+# ------------------------------------------------------------------
+
+def test_is_available_when_whois_importable():
+    with patch.dict("sys.modules", {"whois": MagicMock()}):
+        adapter = WhoisAdapter()
+        assert adapter.is_available() is True
+
+
+def test_is_available_when_whois_missing():
+    with patch("builtins.__import__", side_effect=ImportError):
+        adapter = WhoisAdapter()
+        assert adapter.is_available() is False
+
+
+def test_adapter_name():
+    assert WhoisAdapter().name == "whois"
+
+
+# ------------------------------------------------------------------
+# Domain entity construction
+# ------------------------------------------------------------------
+
+def test_parse_creates_domain_entity(adapter):
+    finding = adapter._parse_results("example.com", _mock_whois_entry())
+    domains = [e for e in finding.entities if e.id == "domain:example.com"]
+    assert len(domains) == 1
+    assert domains[0].entity_type == EntityType.DOMAIN
+    assert domains[0].label == "example.com"
+
+
+def test_parse_domain_properties(adapter):
+    finding = adapter._parse_results("example.com", _mock_whois_entry())
+    domain = next(e for e in finding.entities if e.id == "domain:example.com")
+    props = domain.properties
+
+    assert props["registrar"] == "Example Registrar Inc."
+    assert props["creation_date"] == "2020-01-15T12:00:00"
+    assert props["expiration_date"] == "2025-01-15T12:00:00"
+    assert props["updated_date"] == "2024-06-01T08:30:00"
+    assert props["name_servers"] == ["ns1.example.com", "ns2.example.com"]
+    assert props["registrant_country"] == "US"
+    assert props["registrant_state"] == "CA"
+    assert props["registrant_city"] == "San Francisco"
+    assert props["dnssec"] == "unsigned"
+    assert isinstance(props["status"], list)
+
+
+def test_parse_domain_name_servers_as_string(adapter):
+    """WHOIS can return a single string instead of a list for name_servers."""
+    entry = _mock_whois_entry(name_servers="NS1.SOLO.COM")
+    finding = adapter._parse_results("solo.com", entry)
+    domain = next(e for e in finding.entities if e.id == "domain:solo.com")
+    assert domain.properties["name_servers"] == ["ns1.solo.com"]
+
+
+def test_parse_domain_status_as_string(adapter):
+    """WHOIS can return a single string for status."""
+    entry = _mock_whois_entry(status="active")
+    finding = adapter._parse_results("test.com", entry)
+    domain = next(e for e in finding.entities if e.id == "domain:test.com")
+    assert domain.properties["status"] == ["active"]
+
+
+# ------------------------------------------------------------------
+# Organization entity
+# ------------------------------------------------------------------
+
+def test_parse_creates_org_entity(adapter):
+    finding = adapter._parse_results("example.com", _mock_whois_entry())
+    orgs = [e for e in finding.entities if e.entity_type == EntityType.ORGANIZATION]
+    assert len(orgs) == 1
+    assert orgs[0].label == "Doe Industries LLC"
+    assert orgs[0].id == "org:whois:doe_industries_llc"
+
+
+def test_parse_org_owns_domain(adapter):
+    finding = adapter._parse_results("example.com", _mock_whois_entry())
+    owns = [
+        r for r in finding.relationships
+        if r.relation_type == RelationType.OWNS
+        and r.source_id.startswith("org:")
+    ]
+    assert len(owns) == 1
+    assert owns[0].target_id == "domain:example.com"
+
+
+def test_parse_skips_org_when_privacy_redacted(adapter):
+    entry = _mock_whois_entry(registrant_org="REDACTED FOR PRIVACY")
+    finding = adapter._parse_results("example.com", entry)
+    orgs = [e for e in finding.entities if e.entity_type == EntityType.ORGANIZATION]
+    assert len(orgs) == 0
+
+
+def test_parse_skips_org_when_none(adapter):
+    entry = _mock_whois_entry(registrant_org=None)
+    finding = adapter._parse_results("example.com", entry)
+    orgs = [e for e in finding.entities if e.entity_type == EntityType.ORGANIZATION]
+    assert len(orgs) == 0
+
+
+def test_parse_falls_back_to_org_field(adapter):
+    """When registrant_org is None, adapter checks .org attribute."""
+    entry = _mock_whois_entry(registrant_org=None, org="Fallback Corp")
+    finding = adapter._parse_results("example.com", entry)
+    orgs = [e for e in finding.entities if e.entity_type == EntityType.ORGANIZATION]
+    assert len(orgs) == 1
+    assert orgs[0].label == "Fallback Corp"
+
+
+# ------------------------------------------------------------------
+# Person entity
+# ------------------------------------------------------------------
+
+def test_parse_creates_person_entity(adapter):
+    finding = adapter._parse_results("example.com", _mock_whois_entry())
+    persons = [e for e in finding.entities if e.entity_type == EntityType.PERSON]
+    assert len(persons) == 1
+    assert persons[0].label == "Jane Doe"
+    assert persons[0].id == "person:whois:jane_doe"
+
+
+def test_parse_person_owns_domain(adapter):
+    finding = adapter._parse_results("example.com", _mock_whois_entry())
+    owns = [
+        r for r in finding.relationships
+        if r.relation_type == RelationType.OWNS
+        and r.source_id.startswith("person:")
+    ]
+    assert len(owns) == 1
+    assert owns[0].target_id == "domain:example.com"
+
+
+def test_parse_skips_person_when_privacy_redacted(adapter):
+    entry = _mock_whois_entry(registrant_name="Contact Privacy Inc.")
+    finding = adapter._parse_results("example.com", entry)
+    persons = [e for e in finding.entities if e.entity_type == EntityType.PERSON]
+    assert len(persons) == 0
+
+
+def test_parse_falls_back_to_name_field(adapter):
+    """When registrant_name is None, adapter checks .name attribute."""
+    entry = _mock_whois_entry(registrant_name=None, name="John Smith")
+    finding = adapter._parse_results("example.com", entry)
+    persons = [e for e in finding.entities if e.entity_type == EntityType.PERSON]
+    assert len(persons) == 1
+    assert persons[0].label == "John Smith"
+
+
+# ------------------------------------------------------------------
+# Email entities
+# ------------------------------------------------------------------
+
+def test_parse_creates_email_entities(adapter):
+    finding = adapter._parse_results("example.com", _mock_whois_entry())
+    emails = [e for e in finding.entities if e.entity_type == EntityType.EMAIL]
+    assert len(emails) == 2
+    labels = {e.label for e in emails}
+    assert labels == {"admin@example.com", "tech@example.com"}
+
+
+def test_parse_email_relationships(adapter):
+    finding = adapter._parse_results("example.com", _mock_whois_entry())
+    has_email = [
+        r for r in finding.relationships
+        if r.relation_type == RelationType.HAS_EMAIL
+    ]
+    assert len(has_email) == 2
+    assert all(r.source_id == "domain:example.com" for r in has_email)
+
+
+def test_parse_email_as_string(adapter):
+    """WHOIS emails field can be a single string."""
+    entry = _mock_whois_entry(emails="solo@example.com")
+    finding = adapter._parse_results("example.com", entry)
+    emails = [e for e in finding.entities if e.entity_type == EntityType.EMAIL]
+    assert len(emails) == 1
+    assert emails[0].label == "solo@example.com"
+
+
+def test_parse_no_emails(adapter):
+    entry = _mock_whois_entry(emails=None)
+    finding = adapter._parse_results("example.com", entry)
+    emails = [e for e in finding.entities if e.entity_type == EntityType.EMAIL]
+    assert len(emails) == 0
+
+
+# ------------------------------------------------------------------
+# Edge cases: minimal data
+# ------------------------------------------------------------------
+
+def test_parse_minimal_whois_data(adapter):
+    """Domain with all fields None (maximum privacy)."""
+    entry = _mock_whois_entry(
+        registrar=None,
+        creation_date=None,
+        expiration_date=None,
+        updated_date=None,
+        name_servers=None,
+        registrant_name=None,
+        registrant_org=None,
+        registrant_country=None,
+        registrant_state=None,
+        registrant_city=None,
+        emails=None,
+        dnssec=None,
+        status=None,
+    )
+    finding = adapter._parse_results("private.com", entry)
+    assert len(finding.entities) == 1  # Just the domain
+    assert finding.entities[0].id == "domain:private.com"
+    assert len(finding.relationships) == 0
+
+
+def test_parse_date_as_list(adapter):
+    """WHOIS can return a list of dates."""
+    entry = _mock_whois_entry(
+        creation_date=[datetime(2019, 3, 1), datetime(2019, 3, 2)],
+    )
+    finding = adapter._parse_results("example.com", entry)
+    domain = next(e for e in finding.entities if e.id == "domain:example.com")
+    assert domain.properties["creation_date"] == "2019-03-01T00:00:00"
+
+
+# ------------------------------------------------------------------
+# Notes summary
+# ------------------------------------------------------------------
+
+def test_parse_notes_summary(adapter):
+    finding = adapter._parse_results("example.com", _mock_whois_entry())
+    assert "WHOIS for 'example.com'" in finding.notes
+    assert "2 emails" in finding.notes
+    assert "2 nameservers" in finding.notes
+    assert "Example Registrar Inc." in finding.notes
+
+
+# ------------------------------------------------------------------
+# Full async run (mocked whois.whois)
+# ------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_run_returns_finding(adapter):
+    mock_entry = _mock_whois_entry()
+    mock_whois_mod = MagicMock()
+    mock_whois_mod.whois.return_value = mock_entry
+
+    with patch.dict(sys.modules, {"whois": mock_whois_mod}):
+        finding = await adapter.run(domain="example.com")
+
+    assert len(finding.entities) >= 1
+    domains = [e for e in finding.entities if e.id == "domain:example.com"]
+    assert len(domains) == 1
+
+    # Should have org, person, and email entities
+    orgs = [e for e in finding.entities if e.entity_type == EntityType.ORGANIZATION]
+    persons = [e for e in finding.entities if e.entity_type == EntityType.PERSON]
+    emails = [e for e in finding.entities if e.entity_type == EntityType.EMAIL]
+    assert len(orgs) == 1
+    assert len(persons) == 1
+    assert len(emails) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_handles_exception(adapter):
+    mock_whois_mod = MagicMock()
+    mock_whois_mod.whois.side_effect = Exception("Connection refused")
+
+    with patch.dict(sys.modules, {"whois": mock_whois_mod}):
+        finding = await adapter.run(domain="fail.com")
+
+    assert "failed" in finding.notes.lower()
+    assert "fail.com" in finding.notes
+    assert len(finding.entities) == 0
+
+
+@pytest.mark.asyncio
+async def test_run_handles_timeout(adapter):
+    mock_whois_mod = MagicMock()
+    mock_whois_mod.whois.side_effect = TimeoutError("WHOIS server timeout")
+
+    with patch.dict(sys.modules, {"whois": mock_whois_mod}):
+        finding = await adapter.run(domain="slow.com")
+
+    assert "failed" in finding.notes.lower()
+    assert "slow.com" in finding.notes
+    assert len(finding.entities) == 0
+
+
+# ------------------------------------------------------------------
+# Registry
+# ------------------------------------------------------------------
+
+def test_registered_in_registry():
+    from osint_agent.tools.registry import ToolRegistry, INPUT_ROUTING
+
+    assert "whois" in INPUT_ROUTING["domain"]
+    registry = ToolRegistry()
+    adapter = registry.get("whois")
+    assert adapter is not None
