@@ -23,6 +23,7 @@ from osint_agent.graph.resolver import EntityResolver
 from osint_agent.graph.sqlite_store import SqliteStore
 from osint_agent.models import EntityType, Finding
 from osint_agent.playbooks.base import (
+    LEAD_TOOL_MAP,
     Playbook,
     PlaybookResult,
     ToolStep,
@@ -31,35 +32,7 @@ from osint_agent.playbooks.base import (
 from osint_agent.playbooks.runner import _run_steps
 from osint_agent.tools.registry import ToolRegistry
 
-# Maps lead_type to the tools and kwargs factory for following that lead.
-# Expanded from runner.py's _LEAD_TOOL_MAP to cover all routable types.
-_LEAD_TOOL_MAP: dict[str, list[tuple[str, callable]]] = {
-    "username": [
-        ("maigret", lambda v: {"username": v}),
-        ("reddit", lambda v: {"username": v}),
-        ("steam", lambda v: {"username": v}),
-    ],
-    "email": [
-        ("holehe", lambda v: {"email": v}),
-        ("gravatar", lambda v: {"email": v}),
-    ],
-    "domain": [
-        ("theharvester", lambda v: {"domain": v}),
-        ("whois", lambda v: {"domain": v}),
-        ("commoncrawl", lambda v: {"query": v}),
-    ],
-    "phone": [
-        ("phoneinfoga", lambda v: {"phone_number": v}),
-    ],
-    "person_name": [
-        ("courtlistener", lambda v: {"name": v}),
-        ("openfec", lambda v: {"query": v, "mode": "contributors"}),
-        ("peoplesearch", lambda v: {"query": v}),
-    ],
-    "url": [
-        ("wayback", lambda v: {"url": v, "mode": "snapshots"}),
-    ],
-}
+_LEAD_TOOL_MAP = LEAD_TOOL_MAP
 
 # Default completeness criteria: minimum entity counts by type
 # to consider the investigation "complete enough" for a report.
@@ -80,6 +53,10 @@ class LoopConfig:
     completeness_criteria: dict[EntityType, int] = field(
         default_factory=lambda: dict(DEFAULT_COMPLETENESS),
     )
+    # LLM extraction after Phase 1 (None = disabled)
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    llm_base_url: str | None = None
 
 
 @dataclass
@@ -169,6 +146,12 @@ async def run_investigation_loop(
     state.entity_count_before = await store.entity_count()
     _log(f"\nPhase 1 complete: {state.entity_count_before} entities, "
          f"{len(leads)} leads generated")
+
+    # ── Phase 1.5: LLM extraction (optional) ─────────────────────
+    if cfg.llm_provider:
+        await _run_llm_extraction(
+            store, result, cfg, state,
+        )
 
     # ── Phase 2: Autonomous lead-following loop ──────────────────
     _log(f"\n{'='*60}")
@@ -324,6 +307,62 @@ async def run_investigation_loop(
     _log(f"  Leads remaining: {pending_remaining}")
 
     return result
+
+
+async def _run_llm_extraction(
+    store: SqliteStore,
+    result: PlaybookResult,
+    cfg: LoopConfig,
+    state: LoopState,
+) -> None:
+    """Run LLM extraction on Phase 1 findings and queue new leads.
+
+    Calls analyze_via_api() which exports the current graph, sends it
+    to the configured LLM, and ingests extracted entities/relationships/
+    leads back into the store.
+    """
+    from osint_agent.llm_analyze import analyze_via_api
+
+    _log(f"\n{'='*60}")
+    _log("PHASE 1.5: LLM extraction")
+    _log(f"{'='*60}")
+
+    entity_before = await store.entity_count()
+    leads_before = await store.pending_lead_count()
+
+    try:
+        inv_name = f"Investigation #{result.investigation_id}"
+        summary = await analyze_via_api(
+            store,
+            investigation_id=result.investigation_id,
+            investigation_name=inv_name,
+            provider=cfg.llm_provider,
+            model=cfg.llm_model,
+            base_url=cfg.llm_base_url,
+        )
+
+        new_entities = await store.entity_count() - entity_before
+        new_leads = await store.pending_lead_count() - leads_before
+
+        _log(
+            f"  LLM extracted: {summary['entities']} entities, "
+            f"{summary['relationships']} relationships, "
+            f"{summary['leads']} leads"
+        )
+        if summary["errors"]:
+            _log(f"  LLM validation errors: {summary['errors']}")
+        _log(
+            f"  Net new: +{new_entities} entities, "
+            f"+{new_leads} leads in queue"
+        )
+
+        # Update state so Phase 2 stale-round detection
+        # accounts for LLM-added entities
+        state.entity_count_before = await store.entity_count()
+
+    except Exception as exc:
+        _log(f"  LLM extraction failed: {exc}")
+        _log("  Continuing without LLM results...")
 
 
 async def _check_termination(

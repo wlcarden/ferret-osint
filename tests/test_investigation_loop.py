@@ -524,3 +524,193 @@ def test_org_playbook_has_completeness():
     assert EntityType.PERSON in criteria
     assert criteria[EntityType.PERSON] >= 2
     assert EntityType.ORGANIZATION in criteria
+
+
+# ------------------------------------------------------------------
+# LLM extraction integration (Phase 1.5)
+# ------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_loop_config_llm_defaults_to_disabled():
+    """should have LLM disabled by default"""
+    cfg = LoopConfig()
+    assert cfg.llm_provider is None
+    assert cfg.llm_model is None
+    assert cfg.llm_base_url is None
+
+
+@pytest.mark.asyncio
+async def test_loop_skips_llm_when_not_configured():
+    """should not call LLM when llm_provider is None"""
+    from unittest.mock import patch
+
+    pb = _make_mock_playbook(completeness={})
+    pb.extract_leads.return_value = []
+
+    registry = MagicMock()
+    tool = MagicMock()
+    tool.is_available.return_value = True
+    tool.check_availability.return_value = (True, "ready")
+    tool.safe_run = AsyncMock(return_value=Finding(notes="ok"))
+    registry.get.return_value = tool
+
+    store = AsyncMock()
+    store.create_investigation = AsyncMock(return_value=1)
+    store.entity_count = AsyncMock(return_value=0)
+    store.relationship_count = AsyncMock(return_value=0)
+    store.get_leads = AsyncMock(return_value=[])
+    store.pending_lead_count = AsyncMock(return_value=0)
+
+    with patch(
+        "osint_agent.llm_analyze.analyze_via_api",
+    ) as mock_analyze:
+        await run_investigation_loop(
+            playbook=pb,
+            seed="testuser",
+            registry=registry,
+            store=store,
+            config=LoopConfig(
+                completeness_criteria={},
+                llm_provider=None,
+            ),
+        )
+        mock_analyze.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_loop_runs_llm_when_provider_set():
+    """should call analyze_via_api after Phase 1 when llm_provider is set"""
+    from unittest.mock import patch
+
+    pb = _make_mock_playbook(completeness={})
+    pb.extract_leads.return_value = []
+
+    registry = MagicMock()
+    tool = MagicMock()
+    tool.is_available.return_value = True
+    tool.check_availability.return_value = (True, "ready")
+    tool.safe_run = AsyncMock(return_value=Finding(notes="ok"))
+    registry.get.return_value = tool
+
+    store = AsyncMock()
+    store.create_investigation = AsyncMock(return_value=1)
+    store.entity_count = AsyncMock(return_value=0)
+    store.relationship_count = AsyncMock(return_value=0)
+    store.get_leads = AsyncMock(return_value=[])
+    store.pending_lead_count = AsyncMock(return_value=0)
+
+    llm_result = {
+        "entities": 3, "relationships": 1, "leads": 2, "errors": 0,
+    }
+
+    with patch(
+        "osint_agent.llm_analyze.analyze_via_api",
+        new_callable=AsyncMock,
+        return_value=llm_result,
+    ) as mock_analyze:
+        await run_investigation_loop(
+            playbook=pb,
+            seed="testuser",
+            registry=registry,
+            store=store,
+            config=LoopConfig(
+                completeness_criteria={},
+                llm_provider="anthropic",
+                llm_model="claude-sonnet-4-20250514",
+            ),
+        )
+        mock_analyze.assert_called_once()
+        call_kwargs = mock_analyze.call_args[1]
+        assert call_kwargs["provider"] == "anthropic"
+        assert call_kwargs["model"] == "claude-sonnet-4-20250514"
+        assert call_kwargs["investigation_id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_loop_continues_when_llm_fails():
+    """should catch LLM errors and continue to Phase 2"""
+    from unittest.mock import patch
+
+    pb = _make_mock_playbook(completeness={})
+    pb.extract_leads.return_value = []
+
+    registry = MagicMock()
+    tool = MagicMock()
+    tool.is_available.return_value = True
+    tool.check_availability.return_value = (True, "ready")
+    tool.safe_run = AsyncMock(return_value=Finding(notes="ok"))
+    registry.get.return_value = tool
+
+    store = AsyncMock()
+    store.create_investigation = AsyncMock(return_value=1)
+    store.entity_count = AsyncMock(return_value=0)
+    store.relationship_count = AsyncMock(return_value=0)
+    store.get_leads = AsyncMock(return_value=[])
+    store.pending_lead_count = AsyncMock(return_value=0)
+
+    with patch(
+        "osint_agent.llm_analyze.analyze_via_api",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("API key missing"),
+    ):
+        # Should NOT raise — loop catches and continues
+        result = await run_investigation_loop(
+            playbook=pb,
+            seed="testuser",
+            registry=registry,
+            store=store,
+            config=LoopConfig(
+                completeness_criteria={},
+                llm_provider="anthropic",
+            ),
+        )
+        # Loop completed despite LLM failure
+        assert result.investigation_id == 1
+
+
+@pytest.mark.asyncio
+async def test_loop_llm_passes_base_url():
+    """should forward llm_base_url to analyze_via_api"""
+    from unittest.mock import patch
+
+    pb = _make_mock_playbook(completeness={})
+    pb.extract_leads.return_value = []
+
+    registry = MagicMock()
+    tool = MagicMock()
+    tool.is_available.return_value = True
+    tool.check_availability.return_value = (True, "ready")
+    tool.safe_run = AsyncMock(return_value=Finding(notes="ok"))
+    registry.get.return_value = tool
+
+    store = AsyncMock()
+    store.create_investigation = AsyncMock(return_value=1)
+    store.entity_count = AsyncMock(return_value=0)
+    store.relationship_count = AsyncMock(return_value=0)
+    store.get_leads = AsyncMock(return_value=[])
+    store.pending_lead_count = AsyncMock(return_value=0)
+
+    llm_result = {
+        "entities": 0, "relationships": 0, "leads": 0, "errors": 0,
+    }
+
+    with patch(
+        "osint_agent.llm_analyze.analyze_via_api",
+        new_callable=AsyncMock,
+        return_value=llm_result,
+    ) as mock_analyze:
+        await run_investigation_loop(
+            playbook=pb,
+            seed="testuser",
+            registry=registry,
+            store=store,
+            config=LoopConfig(
+                completeness_criteria={},
+                llm_provider="local",
+                llm_model="llama3",
+                llm_base_url="http://localhost:11434/v1",
+            ),
+        )
+        call_kwargs = mock_analyze.call_args[1]
+        assert call_kwargs["base_url"] == "http://localhost:11434/v1"
+        assert call_kwargs["provider"] == "local"

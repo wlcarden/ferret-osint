@@ -542,3 +542,51 @@ async def test_run_playbook_no_follow_flag(store, mock_registry):
     # (maigret mock + ddg_search mock = 2)
     initial_step_count = len([s for s in pb.steps("testuser")])
     assert len(result.findings) <= initial_step_count
+
+
+# ------------------------------------------------------------------
+# Canonical LEAD_TOOL_MAP
+# ------------------------------------------------------------------
+
+def test_lead_tool_map_covers_all_generated_lead_types():
+    """should route every lead type that extract_leads can produce"""
+    from osint_agent.playbooks.base import LEAD_TOOL_MAP
+
+    # Build a finding with one entity of every type that generates leads
+    entities = [
+        Entity(
+            id=f"{t.value}:test",
+            entity_type=t,
+            label="test",
+            sources=[Source(tool="a")],
+        )
+        for t in EntityType
+    ]
+    findings = [Finding(entities=entities)]
+    leads = extract_leads_from_findings(findings)
+    generated_types = {l.lead_type for l in leads}
+
+    unroutable = generated_types - set(LEAD_TOOL_MAP.keys())
+    assert unroutable == set(), (
+        f"Lead types generated but not routable: {unroutable}"
+    )
+
+
+def test_lead_tool_map_includes_organization():
+    """should have organization routing (was missing in loop.py)"""
+    from osint_agent.playbooks.base import LEAD_TOOL_MAP
+
+    assert "organization" in LEAD_TOOL_MAP
+    tool_names = [t[0] for t in LEAD_TOOL_MAP["organization"]]
+    assert "littlesis" in tool_names
+    assert "fara" in tool_names
+
+
+def test_runner_and_loop_share_same_map():
+    """should use the same canonical map, not divergent copies"""
+    from osint_agent.playbooks.base import LEAD_TOOL_MAP
+    from osint_agent.playbooks.loop import _LEAD_TOOL_MAP as LOOP_MAP
+    from osint_agent.playbooks.runner import _LEAD_TOOL_MAP as RUNNER_MAP
+
+    assert RUNNER_MAP is LEAD_TOOL_MAP
+    assert LOOP_MAP is LEAD_TOOL_MAP

@@ -873,6 +873,9 @@ async def main_async(args):
                 max_stale_rounds=getattr(args, "max_stale", 3),
                 lead_score_threshold=getattr(args, "min_score", 0.4),
                 max_leads_per_round=getattr(args, "leads_per_round", 3),
+                llm_provider=getattr(args, "llm_provider", None),
+                llm_model=getattr(args, "llm_model", None),
+                llm_base_url=getattr(args, "llm_base_url", None),
             )
             result = await run_investigation_loop(
                 playbook=pb,
@@ -1322,6 +1325,20 @@ def main():
     playbook_sub.add_argument(
         "--leads-per-round", type=int, default=3,
         help="Max leads to follow per iteration in auto mode (default: 3)",
+    )
+    playbook_sub.add_argument(
+        "--llm-provider",
+        choices=["anthropic", "openai", "openrouter", "local"],
+        default=None,
+        help="Run LLM extraction after Phase 1 (auto mode only)",
+    )
+    playbook_sub.add_argument(
+        "--llm-model", default=None,
+        help="LLM model override (default: provider's default)",
+    )
+    playbook_sub.add_argument(
+        "--llm-base-url", default=None,
+        help="LLM base URL override (for local/custom endpoints)",
     )
 
     # Search command with extra options

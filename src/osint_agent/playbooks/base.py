@@ -104,6 +104,54 @@ class Playbook(abc.ABC):
         return extract_leads_from_findings(findings)
 
 
+# Canonical lead-type → tool routing map.  Shared by runner.py (depth-limited)
+# and loop.py (autonomous).  A single source of truth prevents drift.
+LEAD_TOOL_MAP: dict[str, list[tuple[str, callable]]] = {
+    "username": [
+        ("maigret", lambda v: {"username": v}),
+        ("reddit", lambda v: {"username": v}),
+        ("steam", lambda v: {"username": v}),
+    ],
+    "email": [
+        ("holehe", lambda v: {"email": v}),
+        ("gravatar", lambda v: {"email": v}),
+    ],
+    "domain": [
+        ("theharvester", lambda v: {"domain": v}),
+        ("whois", lambda v: {"domain": v}),
+        ("wayback_ga", lambda v: {"url": v}),
+        ("crtsh", lambda v: {"domain": v}),
+        ("dns_enum", lambda v: {"domain": v}),
+        ("builtwith", lambda v: {"url": v}),
+    ],
+    "phone": [
+        ("phoneinfoga", lambda v: {"phone_number": v}),
+    ],
+    "person_name": [
+        ("courtlistener", lambda v: {"name": v}),
+        ("openfec", lambda v: {"query": v, "mode": "contributors"}),
+        ("littlesis", lambda v: {"query": v}),
+        ("documentcloud", lambda v: {"query": v}),
+        ("fara", lambda v: {"name": v}),
+        ("congress", lambda v: {"query": v, "mode": "member"}),
+        ("peoplesearch", lambda v: {"query": v}),
+    ],
+    "organization": [
+        ("littlesis", lambda v: {"query": v}),
+        ("fara", lambda v: {"name": v}),
+        ("documentcloud", lambda v: {"query": v}),
+        ("muckrock", lambda v: {"query": v, "mode": "foia"}),
+        ("propublica_nonprofit", lambda v: {"query": v}),
+        ("crosslinked", lambda v: {"company": v}),
+    ],
+    "url": [
+        ("wayback", lambda v: {"url": v, "mode": "snapshots"}),
+        ("commoncrawl", lambda v: {"query": v}),
+        ("yt-dlp", lambda v: {"url": v}),
+    ],
+}
+
+
 def extract_leads_from_findings(findings: list[Finding]) -> list[Lead]:
     """Extract follow-up leads from a list of findings.
 

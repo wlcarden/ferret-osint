@@ -18,51 +18,16 @@ from osint_agent.cache import ToolCache
 from osint_agent.graph.resolver import EntityResolver
 from osint_agent.graph.sqlite_store import SqliteStore
 from osint_agent.models import ErrorCategory, Finding, ToolError
-from osint_agent.playbooks.base import Lead, Playbook, PlaybookResult, ToolStep
+from osint_agent.playbooks.base import (
+    LEAD_TOOL_MAP,
+    Lead,
+    Playbook,
+    PlaybookResult,
+    ToolStep,
+)
 from osint_agent.tools.registry import ToolRegistry
 
-# Maps lead_type to the tools and kwargs needed to follow up
-_LEAD_TOOL_MAP = {
-    "username": [
-        ("maigret", lambda v: {"username": v}),
-        ("reddit", lambda v: {"username": v}),
-        ("steam", lambda v: {"username": v}),
-    ],
-    "email": [
-        ("holehe", lambda v: {"email": v}),
-        ("gravatar", lambda v: {"email": v}),
-    ],
-    "domain": [
-        ("theharvester", lambda v: {"domain": v}),
-        ("whois", lambda v: {"domain": v}),
-        ("wayback_ga", lambda v: {"url": v}),
-        ("crtsh", lambda v: {"domain": v}),
-        ("dns_enum", lambda v: {"domain": v}),
-        ("builtwith", lambda v: {"url": v}),
-    ],
-    "phone": [
-        ("phoneinfoga", lambda v: {"phone_number": v}),
-    ],
-    "person_name": [
-        ("courtlistener", lambda v: {"name": v}),
-        ("openfec", lambda v: {"query": v, "mode": "contributors"}),
-        ("littlesis", lambda v: {"query": v}),
-        ("documentcloud", lambda v: {"query": v}),
-        ("fara", lambda v: {"name": v}),
-        ("congress", lambda v: {"query": v, "mode": "member"}),
-    ],
-    "organization": [
-        ("littlesis", lambda v: {"query": v}),
-        ("fara", lambda v: {"name": v}),
-        ("documentcloud", lambda v: {"query": v}),
-        ("muckrock", lambda v: {"query": v, "mode": "foia"}),
-        ("propublica_nonprofit", lambda v: {"query": v}),
-        ("crosslinked", lambda v: {"company": v}),
-    ],
-    "url": [
-        ("wayback", lambda v: {"url": v, "mode": "snapshots"}),
-    ],
-}
+_LEAD_TOOL_MAP = LEAD_TOOL_MAP
 
 
 async def run_playbook(
