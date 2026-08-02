@@ -33,6 +33,7 @@ dependencies = [
     "neo4j",                 # Graph database driver
     "networkx",              # In-memory graph analysis
     "pandas",                # Data normalization
+    "aiosqlite>=0.19",       # Async SQLite driver for cache and graph store
 
     # --- HTTP & Scraping ---
     "ddgs",                  # DuckDuckGo web and news search
