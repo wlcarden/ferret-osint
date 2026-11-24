@@ -216,16 +216,18 @@ async def _run_entity_resolution(
     """Run entity resolution across all ingested entities."""
     from osint_agent.graph.resolver import EntityResolver
 
-    # Collect all entities from all findings
+    # Collect all entities + relationships from all findings
     all_entities = []
+    all_rels = []
     for finding in findings:
         all_entities.extend(finding.entities)
+        all_rels.extend(finding.relationships)
 
     if len(all_entities) < 2:
         return
 
     resolver = EntityResolver()
-    aka_rels = resolver.resolve(all_entities)
+    aka_rels = resolver.resolve(all_entities, relationships=all_rels)
 
     if not aka_rels:
         return
@@ -389,17 +391,18 @@ async def main_async(args):
         db = await store._ensure_db()
         if to_remove:
             placeholders = ",".join("?" for _ in to_remove)
-            cursor = await db.execute(
+            async with db.execute(
                 f"SELECT entity_type, COUNT(*) as cnt "
                 f"FROM entities "
                 f"WHERE id IN ({placeholders}) "
                 f"GROUP BY entity_type",
                 list(to_remove),
-            )
+            ) as cursor:
+                breakdown_rows = await cursor.fetchall()
             console.status(
                 f"Will remove {len(to_remove)} entities:",
             )
-            for row in await cursor.fetchall():
+            for row in breakdown_rows:
                 console.status(
                     f"  {row['entity_type']}: {row['cnt']}",
                 )
@@ -546,6 +549,81 @@ async def main_async(args):
             await store.close()
         return
 
+    if args.command == "ingest-docs":
+        from pathlib import Path as _Path
+
+        from osint_agent.docs_ingest.cli import ingest_path, list_staged_docs
+        from osint_agent.graph.sqlite_store import SqliteStore
+
+        store = SqliteStore(db_path=getattr(args, "db", None))
+
+        if getattr(args, "list_staged", False):
+            staged = await list_staged_docs()
+            if not staged:
+                console.status("No staged documents.")
+            else:
+                ready = [s for s in staged if s["extraction_ready"]]
+                pending = [s for s in staged if not s["extraction_ready"]]
+                console.status(
+                    f"{len(staged)} staged: {len(ready)} ready to merge, "
+                    f"{len(pending)} awaiting subagent output",
+                )
+                for s in pending[:20]:
+                    console.status(
+                        f"  [pending] {s['doc_id']}  "
+                        f"{_Path(s['source_path']).name[:60]}",
+                    )
+                    console.status(f"    prompt: DOC_PATH={s['text_path']}")
+                    console.status(f"            OUT_PATH={s['out_path']}")
+            if hasattr(store, "close"):
+                await store.close()
+            return
+
+        target = _Path(args.input)
+        if not target.exists():
+            console.error(f"Target not found: {target}")
+            if hasattr(store, "close"):
+                await store.close()
+            return
+
+        summary = await ingest_path(
+            target=target,
+            store=store,
+            regex_only=getattr(args, "regex_only", False),
+            merge_llm=getattr(args, "merge_llm", False),
+            dry_run=getattr(args, "dry_run", False),
+        )
+
+        if "error" in summary:
+            console.error(summary["error"])
+            if hasattr(store, "close"):
+                await store.close()
+            return
+
+        for _, per_inv in summary.items():
+            console.heading(per_inv["investigation_name"], level=2)
+            console.status(
+                f"  Investigation #{per_inv['investigation_id']}  "
+                f"Files: {per_inv['files']}, extracted: {per_inv['extracted']}, "
+                f"entities: {per_inv['regex_entities']}, "
+                f"rels: {per_inv['regex_relationships']}"
+            )
+            if per_inv["llm_merged"]:
+                console.status(
+                    f"  LLM merged: {per_inv['llm_merged']} docs, "
+                    f"+{per_inv['llm_entities_added']} entities"
+                )
+            if per_inv["failures"]:
+                console.warning(
+                    f"  {len(per_inv['failures'])} failures:"
+                )
+                for f in per_inv["failures"][:5]:
+                    console.status(f"    - {f['file']}: {f['error']}")
+
+        if hasattr(store, "close"):
+            await store.close()
+        return
+
     if args.command == "analyze":
         from pathlib import Path
 
@@ -662,6 +740,52 @@ async def main_async(args):
             findings.append(finding)
         else:
             findings.append(Finding(notes="CourtListener not available (missing API key)"))
+    elif args.command == "court-docket":
+        adapter = registry.get("courtlistener")
+        if adapter and adapter.is_available():
+            finding = await adapter.lookup_docket(
+                docket_number=args.input,
+                court=getattr(args, "court", None),
+            )
+            findings.append(finding)
+        else:
+            findings.append(Finding(notes="CourtListener not available (missing API key)"))
+    elif args.command == "court-docs":
+        adapter = registry.get("courtlistener")
+        if adapter and adapter.is_available():
+            finding = await adapter.list_documents(docket_id=int(args.input))
+            findings.append(finding)
+        else:
+            findings.append(Finding(notes="CourtListener not available (missing API key)"))
+    elif args.command == "court-fetch":
+        adapter = registry.get("courtlistener")
+        if adapter and adapter.is_available():
+            finding = await adapter.fetch_document(
+                docket_id=int(args.docket_id),
+                doc_number=int(args.doc_number),
+                attachment_number=(
+                    int(args.attachment) if args.attachment else None
+                ),
+                output_dir=args.output_dir,
+            )
+            findings.append(finding)
+        else:
+            findings.append(Finding(notes="CourtListener not available (missing API key)"))
+    elif args.command == "court-extract":
+        from osint_agent.tools.courtlistener import CourtListenerAdapter
+        text = CourtListenerAdapter.extract_text(args.input)
+        print(text)
+        findings.append(Finding(notes=f"Extracted text from {args.input} ({len(text)} chars)"))
+    elif args.command == "ice-leadership":
+        adapter = registry.get("ice_leadership")
+        if adapter:
+            finding = await adapter.run(
+                office=args.input,
+                role=getattr(args, "role", "Special Agent in Charge"),
+            )
+            findings.append(finding)
+        else:
+            findings.append(Finding(notes="ICE leadership adapter not available"))
     elif args.command == "donors":
         finding = await run_tool(
             registry,
@@ -1046,6 +1170,70 @@ def main():
     ]:
         sub = subparsers.add_parser(cmd, help=help_text)
         sub.add_argument("input", help="The search target")
+
+    # Court docket lookup by case number
+    court_docket_sub = subparsers.add_parser(
+        "court-docket",
+        help="Look up a federal court docket by case number",
+    )
+    court_docket_sub.add_argument(
+        "input", help='Case number (e.g. "3:26-mc-80074")',
+    )
+    court_docket_sub.add_argument(
+        "--court", default=None,
+        help='CourtListener court ID (e.g. "cand" for N.D. Cal.)',
+    )
+
+    # Court document listing for a docket
+    court_docs_sub = subparsers.add_parser(
+        "court-docs",
+        help="List all RECAP documents available for a docket",
+    )
+    court_docs_sub.add_argument(
+        "input", help="CourtListener docket ID (numeric, from court-docket output)",
+    )
+
+    # Court document download
+    court_fetch_sub = subparsers.add_parser(
+        "court-fetch",
+        help="Download a specific document PDF from RECAP",
+    )
+    court_fetch_sub.add_argument(
+        "docket_id", help="CourtListener docket ID (numeric)",
+    )
+    court_fetch_sub.add_argument(
+        "doc_number", help="Docket entry number (e.g. 1)",
+    )
+    court_fetch_sub.add_argument(
+        "--attachment", default=None,
+        help="Attachment number within the entry (e.g. 2 for Exhibit A)",
+    )
+    court_fetch_sub.add_argument(
+        "--output-dir", default="data/court_docs",
+        help="Directory to save the PDF (default: data/court_docs)",
+    )
+
+    # Court document text extraction
+    court_extract_sub = subparsers.add_parser(
+        "court-extract",
+        help="Extract text from a downloaded court document PDF",
+    )
+    court_extract_sub.add_argument(
+        "input", help="Path to the PDF file",
+    )
+
+    # ICE/HSI leadership search
+    ice_leadership_sub = subparsers.add_parser(
+        "ice-leadership",
+        help="Search ICE press releases for field office leadership",
+    )
+    ice_leadership_sub.add_argument(
+        "input", help='Office name (e.g., "HSI Washington")',
+    )
+    ice_leadership_sub.add_argument(
+        "--role", default="Special Agent in Charge",
+        help='Role to search for (default: "Special Agent in Charge")',
+    )
 
     # Email permutation scan
     email_perms_sub = subparsers.add_parser(
@@ -1458,6 +1646,33 @@ def main():
         "--include-activity",
         action="store_true",
         help="Include investigation activity events (when each tool ran)",
+    )
+
+    ingest_docs_sub = subparsers.add_parser(
+        "ingest-docs",
+        help="Ingest ICE Intel corpus documents (regex + optional LLM merge)",
+    )
+    ingest_docs_sub.add_argument(
+        "input",
+        nargs="?",
+        default="data/ice_intel_corpus",
+        help="Folder or single file to ingest (default: entire corpus)",
+    )
+    ingest_docs_sub.add_argument(
+        "--regex-only", action="store_true",
+        help="Regex pass only; stage for LLM but skip merge",
+    )
+    ingest_docs_sub.add_argument(
+        "--merge-llm", action="store_true",
+        help="Merge any existing subagent extractions from /tmp/docs_ingest/",
+    )
+    ingest_docs_sub.add_argument(
+        "--dry-run", action="store_true",
+        help="Report what would happen without writing to the graph",
+    )
+    ingest_docs_sub.add_argument(
+        "--list-staged", action="store_true",
+        help="List documents staged for subagent analysis and their prompt vars",
     )
 
     analyze_sub = subparsers.add_parser(
