@@ -28,7 +28,7 @@ class EntityType(str, Enum):
     VEHICLE = "vehicle"
     FACILITY = "facility"         # Detention center, prison, processing center, leased office
     GOVERNMENT_OFFICE = "government_office"  # ICE/ERO/HSI field office, sub-office, AOR HQ
-    CONTRACT = "contract"         # Solicitation/RFI/RFP/IDV/award; distinguished by properties["stage"]
+    CONTRACT = "contract"         # Solicitation/RFI/RFP/IDV/award; see properties["stage"]
     FOREIGN_AGENT_REGISTRANT = "foreign_agent_registrant"  # FARA registrant
     FOREIGN_PRINCIPAL = "foreign_principal"                # FARA foreign principal
 

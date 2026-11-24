@@ -7,7 +7,7 @@ addition to the specific content it's checking.
 """
 
 from osint_agent import console
-from osint_agent.models import Entity, EntityType, RelationType, Relationship, Source
+from osint_agent.models import Entity, EntityType, Relationship, RelationType, Source
 
 
 def _assert_stderr_only(capsys):

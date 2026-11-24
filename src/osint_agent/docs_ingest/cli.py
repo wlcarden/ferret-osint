@@ -37,7 +37,6 @@ from osint_agent.docs_ingest.llm_pass import (
 )
 from osint_agent.docs_ingest.regex_extract import extract_from_document
 from osint_agent.graph.sqlite_store import SqliteStore
-from osint_agent.models import Finding
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +148,7 @@ async def _ensure_investigation(
     entry = readme.lookup(subfolder) if subfolder else None
     if entry:
         inv_name = f"[{bundle}] {entry['title']} ({entry['date']})"
-        notes = f"Sources:\n" + "\n".join(entry.get("urls", []))
+        notes = "Sources:\n" + "\n".join(entry.get("urls", []))
     else:
         inv_name = f"[{bundle}] {subfolder or '(root)'}"
         notes = ""
