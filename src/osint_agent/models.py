@@ -21,11 +21,16 @@ class EntityType(str, Enum):
     USERNAME = "username"
     ADDRESS = "address"
     ACCOUNT = "account"           # Social media or service account
-    DOCUMENT = "document"         # Court filing, SEC filing, etc.
+    DOCUMENT = "document"         # Court filing, SEC filing, ingested corpus doc
     EVENT = "event"               # Incident, rally, meeting, transaction
     LOCATION = "location"         # Geographic place (not a mailing address)
     PROPERTY = "property"
     VEHICLE = "vehicle"
+    FACILITY = "facility"         # Detention center, prison, processing center, leased office
+    GOVERNMENT_OFFICE = "government_office"  # ICE/ERO/HSI field office, sub-office, AOR HQ
+    CONTRACT = "contract"         # Solicitation/RFI/RFP/IDV/award; distinguished by properties["stage"]
+    FOREIGN_AGENT_REGISTRANT = "foreign_agent_registrant"  # FARA registrant
+    FOREIGN_PRINCIPAL = "foreign_principal"                # FARA foreign principal
 
 
 class RelationType(str, Enum):
@@ -66,6 +71,23 @@ class RelationType(str, Enum):
 
     # Temporal
     PRECEDED_BY = "preceded_by"    # For timeline events
+
+    # Provenance (stronger than MENTIONED; specifically entity-appears-in-document)
+    MENTIONED_IN = "mentioned_in"
+    SIGNED_BY = "signed_by"        # Document signed/approved by a person
+
+    # Federal contracting
+    AWARDED_TO = "awarded_to"      # Contract → Organization (awardee)
+    SOLICITED_BY = "solicited_by"  # Contract → Government office (issuing)
+    OPERATES = "operates"          # Organization → Facility (operator of)
+    SUBCONTRACTS_TO = "subcontracts_to"
+    POC_FOR = "poc_for"            # Person → Contract (point of contact)
+    SERVES_AOR = "serves_aor"      # Government office → Location (AOR coverage)
+    AMENDS = "amends"              # Contract → Contract (amendment / supersedes)
+    PLACE_OF_PERFORMANCE = "place_of_performance"  # Contract → Location/Facility
+
+    # Organizational hierarchy
+    PART_OF = "part_of"            # Gov office → parent org; Facility → parent agency
 
 
 class Source(BaseModel):

@@ -58,6 +58,11 @@ TYPE_COLORS: dict[str, str] = {
     "vehicle": "#b4befe",        # lavender
     "event": "#f5e0dc",          # rosewater
     "location": "#89dceb",       # sky
+    "facility": "#f38ba8",       # red (like organizations — distinct buildings)
+    "government_office": "#cba6f7",  # mauve — official gov presence
+    "contract": "#fab387",       # peach — financial/acquisition instrument
+    "foreign_agent_registrant": "#eba0ac",  # maroon — FARA registrant
+    "foreign_principal": "#f9e2af",         # yellow — FARA foreign principal
 }
 
 
@@ -77,6 +82,11 @@ TYPE_SHAPES: dict[str, str] = {
     "vehicle": "round-rectangle",
     "event": "star",
     "location": "diamond",
+    "facility": "round-rectangle",
+    "government_office": "hexagon",
+    "contract": "round-tag",
+    "foreign_agent_registrant": "round-rectangle",
+    "foreign_principal": "round-rectangle",
 }
 
 
@@ -112,6 +122,20 @@ REL_COLORS: dict[str, str] = {
     "located_at": "#89dceb",
     # Temporal
     "preceded_by": "#9399b2",
+    # Provenance
+    "mentioned_in": "#6c7086",   # overlay-0 (provenance)
+    "signed_by": "#6c7086",
+    # Federal contracting
+    "awarded_to": "#fab387",
+    "solicited_by": "#cba6f7",
+    "operates": "#f38ba8",
+    "subcontracts_to": "#f38ba8",
+    "poc_for": "#585b70",
+    "serves_aor": "#89dceb",
+    "amends": "#fab387",
+    "place_of_performance": "#89dceb",
+    # Organizational hierarchy
+    "part_of": "#f38ba8",
 }
 
 
