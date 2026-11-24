@@ -62,6 +62,9 @@ dev = [
     "ipython",
     "jupyter",
 ]
+pdf = [
+    "pdfplumber>=0.11.9",
+]
 
 [tool.ruff]
 line-length = 100
