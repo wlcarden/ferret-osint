@@ -15,6 +15,7 @@ from osint_agent.tools.exiftool import ExifToolAdapter
 from osint_agent.tools.fara import FaraAdapter
 from osint_agent.tools.gravatar import GravatarAdapter
 from osint_agent.tools.holehe_adapter import HoleheAdapter
+from osint_agent.tools.ice_leadership import IceLeadershipAdapter
 from osint_agent.tools.ip_whois import IpWhoisAdapter
 from osint_agent.tools.littlesis import LittleSisAdapter
 from osint_agent.tools.maigret import MaigretAdapter
@@ -54,6 +55,7 @@ INPUT_ROUTING = {
         "sbir", "patents", "peoplesearch", "littlesis",
         "documentcloud", "fara", "congress", "ddg_search",
     ],
+    "government_office": ["ice_leadership"],
     "police_agency": ["openpolicedata"],
     "url": ["wayback", "commoncrawl", "yt-dlp"],
     "ip": ["ip_whois"],
@@ -115,6 +117,7 @@ class ToolRegistry:
             FaraAdapter(),
             MuckRockAdapter(),
             CongressAdapter(),
+            IceLeadershipAdapter(),
         ]
         for adapter in all_adapters:
             name = adapter.name

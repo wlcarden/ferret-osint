@@ -39,6 +39,7 @@ def test_input_routing_covers_expected_types():
     expected = {
         "username", "email", "phone", "domain", "company",
         "person_name", "url", "ip", "police_agency", "image_file",
+        "government_office",
     }
     assert set(INPUT_ROUTING.keys()) == expected
 

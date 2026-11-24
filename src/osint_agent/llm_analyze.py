@@ -106,6 +106,16 @@ These are often the richest intelligence source. Look for:
 - Court records: case types, filing dates, co-parties
 - Any quantitative data not captured in entity properties
 
+**Temporal role resolution** — Connecting redacted roles to named individuals:
+- When a DOCUMENT entity contains a role/title (e.g., "Special Agent in Charge") \
+with a date but no name, and a PERSON entity elsewhere has that same role at that \
+office, create a relationship linking them.
+- When a government document names an office and date, check if any PERSON entity \
+in the graph has a matching `title` + `office` + compatible `date_observed`.
+- Confidence should reflect temporal proximity: exact date match = 0.9, same month = 0.8, \
+same quarter = 0.7, same year = 0.6.
+- These connections are high-value for identifying individuals behind redacted documents.
+
 **Missing leads** — Valuable follow-up targets not yet in the lead queue:
 - Organizations discovered as employers that haven't been investigated
 - Domains found in source URLs that could be harvested
