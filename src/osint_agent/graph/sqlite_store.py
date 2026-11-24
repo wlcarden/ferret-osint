@@ -173,11 +173,11 @@ class SqliteStore(GraphStore):
         props_json = json.dumps(entity.properties)
 
         # Check if entity exists to merge sources
-        existing = await db.execute(
+        async with db.execute(
             "SELECT sources FROM entities WHERE id = ?",
             (entity.id,),
-        )
-        row = await existing.fetchone()
+        ) as existing:
+            row = await existing.fetchone()
 
         if row:
             # Merge sources: combine existing + new, deduplicate by source_url
@@ -225,12 +225,12 @@ class SqliteStore(GraphStore):
         )
         props_json = json.dumps(rel.properties)
 
-        existing = await db.execute(
+        async with db.execute(
             """SELECT sources FROM relationships
                WHERE source_id = ? AND target_id = ? AND relation_type = ?""",
             (rel.source_id, rel.target_id, rel.relation_type.value),
-        )
-        row = await existing.fetchone()
+        ) as existing:
+            row = await existing.fetchone()
 
         if row:
             existing_sources = json.loads(row["sources"])
@@ -284,13 +284,13 @@ class SqliteStore(GraphStore):
         db = await self._ensure_db()
 
         if cypher_or_filter == "all_nodes":
-            cursor = await db.execute("SELECT * FROM entities")
-            rows = await cursor.fetchall()
+            async with db.execute("SELECT * FROM entities") as cursor:
+                rows = await cursor.fetchall()
             return [_row_to_entity_dict(r) for r in rows]
 
         elif cypher_or_filter == "all_edges":
-            cursor = await db.execute("SELECT * FROM relationships")
-            rows = await cursor.fetchall()
+            async with db.execute("SELECT * FROM relationships") as cursor:
+                rows = await cursor.fetchall()
             return [_row_to_rel_dict(r) for r in rows]
 
         elif cypher_or_filter.startswith("neighbors:"):
@@ -298,22 +298,24 @@ class SqliteStore(GraphStore):
             results = []
 
             # Outgoing edges
-            cursor = await db.execute(
+            async with db.execute(
                 "SELECT * FROM relationships WHERE source_id = ?",
                 (entity_id,),
-            )
-            for row in await cursor.fetchall():
+            ) as cursor:
+                rows_out = await cursor.fetchall()
+            for row in rows_out:
                 d = _row_to_rel_dict(row)
                 d["id"] = d["target"]
                 d["direction"] = "outgoing"
                 results.append(d)
 
             # Incoming edges
-            cursor = await db.execute(
+            async with db.execute(
                 "SELECT * FROM relationships WHERE target_id = ?",
                 (entity_id,),
-            )
-            for row in await cursor.fetchall():
+            ) as cursor:
+                rows_in = await cursor.fetchall()
+            for row in rows_in:
                 d = _row_to_rel_dict(row)
                 d["id"] = d["source"]
                 d["direction"] = "incoming"
@@ -323,29 +325,29 @@ class SqliteStore(GraphStore):
 
         elif cypher_or_filter.startswith("entity:"):
             entity_id = cypher_or_filter.split(":", 1)[1]
-            cursor = await db.execute(
+            async with db.execute(
                 "SELECT * FROM entities WHERE id = ?",
                 (entity_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
             return [_row_to_entity_dict(row)] if row else []
 
         elif cypher_or_filter.startswith("type:"):
             entity_type = cypher_or_filter.split(":", 1)[1]
-            cursor = await db.execute(
+            async with db.execute(
                 "SELECT * FROM entities WHERE entity_type = ?",
                 (entity_type,),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
             return [_row_to_entity_dict(r) for r in rows]
 
         elif cypher_or_filter.startswith("search:"):
             text = cypher_or_filter.split(":", 1)[1]
-            cursor = await db.execute(
+            async with db.execute(
                 "SELECT * FROM entities WHERE label LIKE ?",
                 (f"%{text}%",),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
             return [_row_to_entity_dict(r) for r in rows]
 
         # Investigation-scoped queries: "inv:<id>:all_nodes", "inv:<id>:all_edges"
@@ -357,18 +359,18 @@ class SqliteStore(GraphStore):
             sub = parts[2]
 
             if sub == "all_nodes":
-                cursor = await db.execute(
+                async with db.execute(
                     """SELECT e.* FROM entities e
                        JOIN investigation_entities ie
                          ON e.id = ie.entity_id
                        WHERE ie.investigation_id = ?""",
                     (inv_id,),
-                )
-                rows = await cursor.fetchall()
+                ) as cursor:
+                    rows = await cursor.fetchall()
                 return [_row_to_entity_dict(r) for r in rows]
 
             elif sub == "all_edges":
-                cursor = await db.execute(
+                async with db.execute(
                     """SELECT r.* FROM relationships r
                        JOIN investigation_entities ie1
                          ON r.source_id = ie1.entity_id
@@ -377,8 +379,8 @@ class SqliteStore(GraphStore):
                        WHERE ie1.investigation_id = ?
                          AND ie2.investigation_id = ?""",
                     (inv_id, inv_id),
-                )
-                rows = await cursor.fetchall()
+                ) as cursor:
+                    rows = await cursor.fetchall()
                 return [_row_to_rel_dict(r) for r in rows]
 
         return []
@@ -415,12 +417,13 @@ class SqliteStore(GraphStore):
             ids,
         )
         # Delete entities
-        cursor = await db.execute(
+        async with db.execute(
             f"DELETE FROM entities WHERE id IN ({placeholders})",
             ids,
-        )
+        ) as cursor:
+            rowcount = cursor.rowcount
         await db.commit()
-        return cursor.rowcount
+        return rowcount
 
     async def find_orphan_ids(
         self, investigation_id: int | None = None,
@@ -433,7 +436,7 @@ class SqliteStore(GraphStore):
         db = await self._ensure_db()
 
         if investigation_id is not None:
-            cursor = await db.execute(
+            async with db.execute(
                 """SELECT ie.entity_id FROM investigation_entities ie
                    WHERE ie.investigation_id = ?
                      AND ie.entity_id NOT IN (
@@ -442,17 +445,19 @@ class SqliteStore(GraphStore):
                        SELECT target_id FROM relationships
                      )""",
                 (investigation_id,),
-            )
+            ) as cursor:
+                rows = await cursor.fetchall()
         else:
-            cursor = await db.execute(
+            async with db.execute(
                 """SELECT id FROM entities
                    WHERE id NOT IN (
                      SELECT source_id FROM relationships
                      UNION
                      SELECT target_id FROM relationships
                    )""",
-            )
-        return {row[0] for row in await cursor.fetchall()}
+            ) as cursor:
+                rows = await cursor.fetchall()
+        return {row[0] for row in rows}
 
     async def find_unreachable_ids(
         self,
@@ -468,13 +473,15 @@ class SqliteStore(GraphStore):
 
         # Get the universe of entity IDs
         if investigation_id is not None:
-            cursor = await db.execute(
+            async with db.execute(
                 "SELECT entity_id FROM investigation_entities WHERE investigation_id = ?",
                 (investigation_id,),
-            )
+            ) as cursor:
+                id_rows = await cursor.fetchall()
         else:
-            cursor = await db.execute("SELECT id FROM entities")
-        all_ids = {row[0] for row in await cursor.fetchall()}
+            async with db.execute("SELECT id FROM entities") as cursor:
+                id_rows = await cursor.fetchall()
+        all_ids = {row[0] for row in id_rows}
 
         if seed_id not in all_ids:
             return all_ids  # seed doesn't exist — everything is unreachable
@@ -485,15 +492,16 @@ class SqliteStore(GraphStore):
 
         while frontier:
             placeholders = ",".join("?" for _ in frontier)
-            cursor = await db.execute(
+            async with db.execute(
                 f"""SELECT DISTINCT target_id FROM relationships
                     WHERE source_id IN ({placeholders})
                     UNION
                     SELECT DISTINCT source_id FROM relationships
                     WHERE target_id IN ({placeholders})""",
                 (*frontier, *frontier),
-            )
-            neighbors = {row[0] for row in await cursor.fetchall()}
+            ) as cursor:
+                nbr_rows = await cursor.fetchall()
+            neighbors = {row[0] for row in nbr_rows}
             # Only consider neighbors within our universe
             frontier = (neighbors & all_ids) - visited
             visited |= frontier
@@ -514,18 +522,23 @@ class SqliteStore(GraphStore):
 
         # Get universe
         if investigation_id is not None:
-            cursor = await db.execute(
+            async with db.execute(
                 "SELECT entity_id FROM investigation_entities WHERE investigation_id = ?",
                 (investigation_id,),
-            )
+            ) as cursor:
+                id_rows = await cursor.fetchall()
         else:
-            cursor = await db.execute("SELECT id FROM entities")
-        all_ids = {row[0] for row in await cursor.fetchall()}
+            async with db.execute("SELECT id FROM entities") as cursor:
+                id_rows = await cursor.fetchall()
+        all_ids = {row[0] for row in id_rows}
 
         # Build adjacency from relationships
         adj: dict[str, set[str]] = {eid: set() for eid in all_ids}
-        cursor = await db.execute("SELECT source_id, target_id FROM relationships")
-        for row in await cursor.fetchall():
+        async with db.execute(
+            "SELECT source_id, target_id FROM relationships"
+        ) as cursor:
+            rel_rows = await cursor.fetchall()
+        for row in rel_rows:
             src, tgt = row[0], row[1]
             if src in all_ids and tgt in all_ids:
                 adj[src].add(tgt)
@@ -555,14 +568,14 @@ class SqliteStore(GraphStore):
 
     async def entity_count(self) -> int:
         db = await self._ensure_db()
-        cursor = await db.execute("SELECT COUNT(*) FROM entities")
-        row = await cursor.fetchone()
+        async with db.execute("SELECT COUNT(*) FROM entities") as cursor:
+            row = await cursor.fetchone()
         return row[0]
 
     async def relationship_count(self) -> int:
         db = await self._ensure_db()
-        cursor = await db.execute("SELECT COUNT(*) FROM relationships")
-        row = await cursor.fetchone()
+        async with db.execute("SELECT COUNT(*) FROM relationships") as cursor:
+            row = await cursor.fetchone()
         return row[0]
 
     def summary(self) -> str:
@@ -578,15 +591,17 @@ class SqliteStore(GraphStore):
         """Async human-readable summary of graph contents."""
         db = await self._ensure_db()
 
-        cursor = await db.execute(
+        async with db.execute(
             "SELECT entity_type, COUNT(*) as cnt FROM entities GROUP BY entity_type",
-        )
-        type_counts = {row["entity_type"]: row["cnt"] for row in await cursor.fetchall()}
+        ) as cursor:
+            type_rows = await cursor.fetchall()
+        type_counts = {row["entity_type"]: row["cnt"] for row in type_rows}
 
-        cursor = await db.execute(
+        async with db.execute(
             "SELECT relation_type, COUNT(*) as cnt FROM relationships GROUP BY relation_type",
-        )
-        rel_counts = {row["relation_type"]: row["cnt"] for row in await cursor.fetchall()}
+        ) as cursor:
+            rel_rows = await cursor.fetchall()
+        rel_counts = {row["relation_type"]: row["cnt"] for row in rel_rows}
 
         total_e = sum(type_counts.values())
         total_r = sum(rel_counts.values())
@@ -610,20 +625,21 @@ class SqliteStore(GraphStore):
         """Create a new investigation and return its ID."""
         db = await self._ensure_db()
         now = datetime.now(UTC).isoformat()
-        cursor = await db.execute(
+        async with db.execute(
             "INSERT INTO investigations (name, created_at, updated_at, notes) VALUES (?, ?, ?, ?)",
             (name, now, now, notes),
-        )
+        ) as cursor:
+            lastrowid = cursor.lastrowid
         await db.commit()
-        return cursor.lastrowid
+        return lastrowid
 
     async def list_investigations(self) -> list[dict]:
         """List all investigations."""
         db = await self._ensure_db()
-        cursor = await db.execute(
+        async with db.execute(
             "SELECT * FROM investigations ORDER BY updated_at DESC",
-        )
-        rows = await cursor.fetchall()
+        ) as cursor:
+            rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
     async def search_across_investigations(
@@ -644,23 +660,23 @@ class SqliteStore(GraphStore):
             params.append(entity_type)
 
         where = " AND ".join(conditions)
-        cursor = await db.execute(
+        async with db.execute(
             f"SELECT * FROM entities e WHERE {where}", params,
-        )
-        rows = await cursor.fetchall()
+        ) as cursor:
+            rows = await cursor.fetchall()
 
         results = []
         for row in rows:
             entity = _row_to_entity_dict(row)
 
             # Look up which investigations this entity belongs to
-            inv_cursor = await db.execute(
+            async with db.execute(
                 """SELECT i.id, i.name FROM investigations i
                    JOIN investigation_entities ie ON i.id = ie.investigation_id
                    WHERE ie.entity_id = ?""",
                 (entity["id"],),
-            )
-            inv_rows = await inv_cursor.fetchall()
+            ) as inv_cursor:
+                inv_rows = await inv_cursor.fetchall()
             entity["investigations"] = [
                 {"id": r["id"], "name": r["name"]} for r in inv_rows
             ]
@@ -684,16 +700,17 @@ class SqliteStore(GraphStore):
         """Add a lead to the queue. Returns lead ID."""
         db = await self._ensure_db()
         now = datetime.now(UTC).isoformat()
-        cursor = await db.execute(
+        async with db.execute(
             """INSERT INTO leads
                (investigation_id, entity_id, lead_type,
                 value, score, status, notes,
                 created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)""",
             (investigation_id, entity_id, lead_type, value, score, notes, now, now),
-        )
+        ) as cursor:
+            lastrowid = cursor.lastrowid
         await db.commit()
-        return cursor.lastrowid
+        return lastrowid
 
     async def get_leads(
         self,
@@ -714,11 +731,11 @@ class SqliteStore(GraphStore):
             params.append(investigation_id)
 
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        cursor = await db.execute(
+        async with db.execute(
             f"SELECT * FROM leads {where} ORDER BY score DESC, created_at ASC LIMIT ?",
             (*params, limit),
-        )
-        rows = await cursor.fetchall()
+        ) as cursor:
+            rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
     async def update_lead(self, lead_id: int, status: str, notes: str = "") -> None:
@@ -744,31 +761,34 @@ class SqliteStore(GraphStore):
         db = await self._ensure_db()
 
         # Seed: entities directly referenced by leads for this investigation
-        cursor = await db.execute(
+        async with db.execute(
             """SELECT DISTINCT entity_id FROM leads
                WHERE investigation_id = ? AND entity_id IS NOT NULL""",
             (investigation_id,),
-        )
-        seed_ids = {row["entity_id"] for row in await cursor.fetchall()}
+        ) as cursor:
+            seed_rows = await cursor.fetchall()
+        seed_ids = {row["entity_id"] for row in seed_rows}
 
         # Also seed from lead values that match entity IDs or labels
-        cursor = await db.execute(
+        async with db.execute(
             """SELECT DISTINCT e.id FROM entities e
                JOIN leads l ON (e.id LIKE '%' || l.value || '%'
                                 OR e.label LIKE '%' || l.value || '%')
                WHERE l.investigation_id = ?""",
             (investigation_id,),
-        )
-        for row in await cursor.fetchall():
+        ) as cursor:
+            value_rows = await cursor.fetchall()
+        for row in value_rows:
             seed_ids.add(row["id"])
 
         # Seed from explicit label match (for investigations with no leads)
         if seed_label:
-            cursor = await db.execute(
+            async with db.execute(
                 "SELECT id FROM entities WHERE label LIKE ?",
                 (f"%{seed_label}%",),
-            )
-            for row in await cursor.fetchall():
+            ) as cursor:
+                label_rows = await cursor.fetchall()
+            for row in label_rows:
                 seed_ids.add(row["id"])
 
         if not seed_ids:
@@ -780,15 +800,16 @@ class SqliteStore(GraphStore):
 
         while frontier:
             placeholders = ",".join("?" for _ in frontier)
-            cursor = await db.execute(
+            async with db.execute(
                 f"""SELECT DISTINCT target_id FROM relationships
                     WHERE source_id IN ({placeholders})
                     UNION
                     SELECT DISTINCT source_id FROM relationships
                     WHERE target_id IN ({placeholders})""",
                 (*frontier, *frontier),
-            )
-            neighbors = {row[0] for row in await cursor.fetchall()}
+            ) as cursor:
+                nbr_rows = await cursor.fetchall()
+            neighbors = {row[0] for row in nbr_rows}
             frontier = neighbors - visited
             visited |= frontier
 
@@ -812,25 +833,27 @@ class SqliteStore(GraphStore):
         """Get finding notes, optionally scoped to an investigation."""
         db = await self._ensure_db()
         if investigation_id is not None:
-            cursor = await db.execute(
+            async with db.execute(
                 """SELECT tool, notes, created_at FROM findings
                    WHERE investigation_id = ?
                    ORDER BY created_at""",
                 (investigation_id,),
-            )
+            ) as cursor:
+                rows = await cursor.fetchall()
         else:
-            cursor = await db.execute(
+            async with db.execute(
                 "SELECT tool, notes, created_at FROM findings ORDER BY created_at",
-            )
-        return [dict(row) for row in await cursor.fetchall()]
+            ) as cursor:
+                rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
     async def pending_lead_count(self) -> int:
         """Count pending leads."""
         db = await self._ensure_db()
-        cursor = await db.execute(
+        async with db.execute(
             "SELECT COUNT(*) FROM leads WHERE status = 'pending'",
-        )
-        row = await cursor.fetchone()
+        ) as cursor:
+            row = await cursor.fetchone()
         return row[0]
 
 
