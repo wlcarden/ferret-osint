@@ -91,7 +91,7 @@ class OrgToMembers(Playbook):
             ),
             ToolStep(
                 tool_name="propublica_nonprofit",
-                kwargs={"query": seed},
+                kwargs={"name": seed},
                 description=f"Nonprofit 990 filings for '{seed}'",
             ),
             ToolStep(
