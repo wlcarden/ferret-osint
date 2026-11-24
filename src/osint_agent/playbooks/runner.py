@@ -113,13 +113,15 @@ async def run_playbook(
 
     # Phase 3: Entity resolution
     all_entities = []
+    all_rels = []
     for finding in result.findings:
         all_entities.extend(finding.entities)
+        all_rels.extend(finding.relationships)
 
     if len(all_entities) >= 2:
         console.phase_heading("Entity Resolution")
         resolver = EntityResolver()
-        aka_rels = resolver.resolve(all_entities)
+        aka_rels = resolver.resolve(all_entities, relationships=all_rels)
         if aka_rels:
             for rel in aka_rels:
                 await store.merge_relationship(rel)

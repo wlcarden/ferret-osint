@@ -276,8 +276,10 @@ async def run_investigation_loop(
 
     # ── Phase 3: Entity resolution ───────────────────────────────
     all_entities = []
+    all_rels = []
     for finding in result.findings:
         all_entities.extend(finding.entities)
+        all_rels.extend(finding.relationships)
 
     if len(all_entities) >= 2:
         _log(f"\n{'='*60}")
@@ -285,7 +287,7 @@ async def run_investigation_loop(
         _log(f"{'='*60}")
 
         resolver = EntityResolver()
-        aka_rels = resolver.resolve(all_entities)
+        aka_rels = resolver.resolve(all_entities, relationships=all_rels)
         if aka_rels:
             _log(f"  Found {len(aka_rels)} cross-source links")
             for rel in aka_rels:

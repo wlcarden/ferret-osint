@@ -56,17 +56,24 @@ class EntityResolver:
     def __init__(self, policy: CorroborationPolicy | None = None):
         self.policy = policy or CorroborationPolicy()
 
-    def resolve(self, entities: list[Entity]) -> list[Relationship]:
+    def resolve(
+        self,
+        entities: list[Entity],
+        relationships: list[Relationship] | None = None,
+    ) -> list[Relationship]:
         """Find cross-source duplicates and return ALSO_KNOWN_AS edges.
 
         Args:
             entities: All entities from the graph (across all tools).
+            relationships: Optional existing relationships, used for
+                contact-identifier dedup (shared email/phone/username
+                indicates shared identity).
 
         Returns:
             List of ALSO_KNOWN_AS Relationship objects with confidence
             scores in properties.
         """
-        relationships: list[Relationship] = []
+        out: list[Relationship] = []
 
         for entity_type in RESOLVABLE_TYPES:
             typed_entities = [
@@ -76,9 +83,179 @@ class EntityResolver:
                 continue
 
             matches = self._resolve_type(typed_entities, entity_type)
-            relationships.extend(matches)
+            out.extend(matches)
 
-        return relationships
+        # High-confidence signals that don't require name-based blocking
+        out.extend(self._resolve_by_uei(entities))
+        if relationships is not None:
+            out.extend(
+                self._resolve_by_shared_contact(entities, relationships),
+            )
+        out.extend(self._resolve_ocr_variants(entities))
+
+        # Deduplicate across passes on (source, target) pair
+        seen: set[tuple[str, str]] = set()
+        deduped: list[Relationship] = []
+        for rel in out:
+            key = tuple(sorted([rel.source_id, rel.target_id]))
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(rel)
+        return deduped
+
+    # ------------------------------------------------------------------
+    # Additional high-confidence signals
+    # ------------------------------------------------------------------
+
+    def _resolve_by_uei(
+        self, entities: list[Entity],
+    ) -> list[Relationship]:
+        """Two organizations sharing a UEI property are the same entity.
+
+        UEI is SAM.gov's 12-char unique identifier; the strongest
+        available signal for corporate identity.
+        """
+        from collections import defaultdict
+        by_uei: dict[str, list[Entity]] = defaultdict(list)
+        for e in entities:
+            if e.entity_type != EntityType.ORGANIZATION:
+                continue
+            uei = e.properties.get("uei")
+            if isinstance(uei, str) and len(uei) >= 10:
+                by_uei[uei.upper()].append(e)
+
+        out: list[Relationship] = []
+        for uei, group in by_uei.items():
+            if len(group) < 2:
+                continue
+            for i in range(len(group)):
+                for j in range(i + 1, len(group)):
+                    e1, e2 = group[i], group[j]
+                    out.append(_make_aka(e1, e2, 0.95, reason=f"shared_uei={uei}"))
+        return out
+
+    def _resolve_by_shared_contact(
+        self,
+        entities: list[Entity],
+        relationships: list[Relationship],
+    ) -> list[Relationship]:
+        """Two persons linked to the same email/phone/username entity
+        via has_email/has_phone/has_username are the same individual.
+
+        Official email addresses like someone@ice.dhs.gov are assigned
+        1:1; entities sharing one are almost certainly the same person.
+        """
+        from collections import defaultdict
+        person_ids = {
+            e.id for e in entities if e.entity_type == EntityType.PERSON
+        }
+        contact_rels = {
+            RelationType.HAS_EMAIL,
+            RelationType.HAS_PHONE,
+            RelationType.HAS_USERNAME,
+        }
+        # (contact_id, rel_type) -> list of person_ids linked to it
+        groups: dict[tuple[str, str], list[str]] = defaultdict(list)
+        for rel in relationships:
+            if rel.relation_type not in contact_rels:
+                continue
+            if rel.source_id not in person_ids:
+                continue
+            groups[(rel.target_id, rel.relation_type.value)].append(rel.source_id)
+
+        entity_by_id = {e.id: e for e in entities}
+        out: list[Relationship] = []
+        for (contact_id, rel_name), person_ids_list in groups.items():
+            uniq = sorted(set(person_ids_list))
+            if len(uniq) < 2:
+                continue
+            for i in range(len(uniq)):
+                for j in range(i + 1, len(uniq)):
+                    e1 = entity_by_id.get(uniq[i])
+                    e2 = entity_by_id.get(uniq[j])
+                    if not e1 or not e2:
+                        continue
+                    out.append(_make_aka(
+                        e1, e2, 0.9,
+                        reason=f"shared_{rel_name}={contact_id[:40]}",
+                    ))
+        return out
+
+    def _resolve_ocr_variants(
+        self, entities: list[Entity],
+    ) -> list[Relationship]:
+        """Match persons whose labels differ by OCR-confusable characters.
+
+        Example: 'Gerard A. Jones' ↔ 'Gerard A. Vones' (tesseract
+        frequently confuses J/V, O/0, l/1, m/rn). Very tight filter to
+        avoid false positives on genuinely-distinct individuals.
+        """
+        ocr_confusions = {
+            frozenset(["j", "v"]), frozenset(["j", "i"]),
+            frozenset(["o", "0"]), frozenset(["l", "1"]),
+            frozenset(["l", "i"]), frozenset(["s", "5"]),
+            frozenset(["b", "8"]), frozenset(["c", "e"]),
+            frozenset(["u", "n"]), frozenset(["d", "b"]),
+            frozenset(["g", "q"]),
+        }
+
+        def _norm(label: str) -> str:
+            s = label.lower().strip()
+            s = re.split(r"[,;]", s)[0]
+            return re.sub(r"\s+", " ", s).strip()
+
+        def _is_middle_initial_only_diff(n1: str, n2: str) -> bool:
+            t1, t2 = n1.split(), n2.split()
+            if len(t1) != len(t2) or len(t1) < 3:
+                return False
+            diffs = [(a, b) for a, b in zip(t1, t2) if a != b]
+            return (
+                len(diffs) == 1
+                and all(len(x.rstrip(".")) == 1 for x in diffs[0])
+            )
+
+        def _ocr_confusable(n1: str, n2: str) -> bool:
+            if len(n1) != len(n2):
+                return False
+            diffs = [(c1, c2) for c1, c2 in zip(n1, n2) if c1 != c2]
+            return (
+                bool(diffs)
+                and len(diffs) <= 2
+                and all(frozenset([c1, c2]) in ocr_confusions for c1, c2 in diffs)
+            )
+
+        from collections import defaultdict
+        # Bucket by (first 2, last 2, length) for blocking
+        buckets: dict[tuple, list[tuple[str, Entity]]] = defaultdict(list)
+        for e in entities:
+            if e.entity_type != EntityType.PERSON:
+                continue
+            n = _norm(e.label)
+            if len(n) < 7:
+                continue
+            buckets[(n[:2], n[-2:], len(n))].append((n, e))
+
+        out: list[Relationship] = []
+        seen: set[tuple[str, str]] = set()
+        for group in buckets.values():
+            for i, (n1, e1) in enumerate(group):
+                for n2, e2 in group[i + 1:]:
+                    if e1.id == e2.id or n1 == n2:
+                        continue
+                    pk = tuple(sorted([e1.id, e2.id]))
+                    if pk in seen:
+                        continue
+                    if _is_middle_initial_only_diff(n1, n2):
+                        continue
+                    if not _ocr_confusable(n1, n2):
+                        continue
+                    seen.add(pk)
+                    out.append(_make_aka(
+                        e1, e2, 0.85,
+                        reason="ocr_variant",
+                    ))
+        return out
 
     def _resolve_type(
         self,
@@ -355,18 +532,22 @@ def _pair_key(id1: str, id2: str) -> tuple[str, str]:
 
 def _make_aka(
     e1: Entity, e2: Entity, confidence: float,
+    reason: str = "",
 ) -> Relationship:
     """Create an ALSO_KNOWN_AS relationship between two entities."""
+    props = {
+        "confidence": round(confidence, 3),
+        "method": "entity_resolution",
+        "source_label": e1.label,
+        "target_label": e2.label,
+    }
+    if reason:
+        props["reason"] = reason
     return Relationship(
         source_id=e1.id,
         target_id=e2.id,
         relation_type=RelationType.ALSO_KNOWN_AS,
-        properties={
-            "confidence": round(confidence, 3),
-            "method": "entity_resolution",
-            "source_label": e1.label,
-            "target_label": e2.label,
-        },
+        properties=props,
         sources=[Source(
             tool="entity_resolver",
             confidence=confidence,
