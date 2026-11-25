@@ -41,6 +41,10 @@ dependencies = [
     "beautifulsoup4",        # HTML parsing
     "lxml",                  # Fast XML/HTML parser
 
+    # --- Document Parsing ---
+    "python-docx",           # DOCX text extraction (imported as `docx`)
+    "openpyxl",              # XLSX text extraction
+
     # --- Config & Environment ---
     "python-dotenv",         # .env file loading
     "pyyaml",                # YAML config parsing
