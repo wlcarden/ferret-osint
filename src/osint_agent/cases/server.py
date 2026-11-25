@@ -24,6 +24,8 @@ Settings come from the environment or the project's .env file:
     CASES_SERVER_PORT    port for http (default 8765)
     LLM_BASE_URL, LLM_MODEL, LLM_API_KEY
                          the model that reads posts and screenshots
+    COURTLISTENER_API_KEY
+                         enables the federal court docket search
 
 Long steps are done in parts. Reading posts and taking in screenshots each do
 a few batches or pictures per call and say whether they finished, so no single
@@ -53,6 +55,7 @@ from osint_agent.cases.perspective import (
     available_perspectives,
     load_perspective,
 )
+from osint_agent.cases.sources import default_sources
 from osint_agent.cases.store import DEFAULT_CASES_DB, CaseStore
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -133,6 +136,7 @@ def build_engine(environ: Mapping[str, str] | None = None) -> CaseEngine:
     captures.mkdir(parents=True, exist_ok=True)
     return CaseEngine(
         CaseStore(database),
+        sources=default_sources(values),
         collectors=default_collectors(),
         reader=ChatReader.from_env(values),
         captures_dir=captures,

@@ -286,10 +286,12 @@ class CaseEngine:
             )
         if query is None:
             return [subject.name]
-        if (
-            identity.parse_name(query).surname
-            != identity.parse_name(subject.name).surname
-        ):
+        asked, own = identity.parse_name(query), identity.parse_name(subject.name)
+        # Another spelling of the subject's name, never a relative's name
+        same_given = asked.given == own.given or (
+            asked.given[:1] == own.given[:1] and 1 in (len(asked.given), len(own.given))
+        )
+        if asked.surname != own.surname or not same_given:
             return _error("a case can only be used to search for its own subject")
         return [query]
 
@@ -352,6 +354,14 @@ class CaseEngine:
             return self._finish(case_id, spec, SourceStatus.EMPTY, [], note)
         kept: list[EvidenceRecord] = []
         failures: list[str] = []
+        # Running a source again must not store the same record twice
+        held = {
+            record.url or record.text
+            for record in state.evidence
+            if record.source == spec.id
+        }
+        already = 0
+        said: list[str] = []  # What the source says about its own search
         for term in queries:
             try:
                 result = adapter(term, state.case.subject)
@@ -363,16 +373,26 @@ class CaseEngine:
             if result.status is SourceStatus.FAILED:
                 failures.append(result.note or "the source reported a failure")
                 continue
+            if result.note:
+                note = f"{term}: {result.note}" if len(queries) > 1 else result.note
+                if note not in said:
+                    said.append(note)
             handle = term if spec.query == "handle" else None
-            kept += [
-                self._keep(case_id, spec, raw, "adapter", handle)
-                for raw in result.records
-            ]
-        if kept:
+            for raw in result.records:
+                if (raw.url or raw.text) in held:
+                    already += 1
+                    continue
+                held.add(raw.url or raw.text)
+                kept.append(self._keep(case_id, spec, raw, "adapter", handle))
+        if already:
+            said.append(f"{already} records were already held from an earlier run.")
+        if kept or already:
             status = SourceStatus.ANSWERED
         else:
             status = SourceStatus.FAILED if failures else SourceStatus.EMPTY
-        return self._finish(case_id, spec, status, kept, "; ".join(failures))
+        # A source's own account of its search, such as that it was cut short,
+        # belongs in the brief whether or not it found anything
+        return self._finish(case_id, spec, status, kept, "; ".join(said + failures))
 
     def _finish(
         self,

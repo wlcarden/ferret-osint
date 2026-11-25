@@ -53,6 +53,12 @@ FIELD_LABELS = {
 }
 
 
+# Words that begin a surname of several words
+SURNAME_PARTICLES = frozenset(
+    "da das de del della den der di dos du el la le lo ter van von".split()
+)
+
+
 class ParsedName(NamedTuple):
     given: str
     middle: str
@@ -76,7 +82,11 @@ def parse_name(name: str) -> ParsedName:
         return ParsedName("", "", "")
     if len(tokens) == 1:
         return ParsedName("", "", tokens[0])
-    return ParsedName(tokens[0], " ".join(tokens[1:-1]), tokens[-1])
+    # "de la Cruz" and "van der Berg" are surnames, not middle names
+    start = len(tokens) - 1
+    while start > 1 and tokens[start - 1] in SURNAME_PARTICLES:
+        start -= 1
+    return ParsedName(tokens[0], " ".join(tokens[1:start]), " ".join(tokens[start:]))
 
 
 def state_code(value: str | None) -> str | None:
