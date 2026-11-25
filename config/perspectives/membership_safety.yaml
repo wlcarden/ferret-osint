@@ -82,8 +82,10 @@ sources:
       program read it. Covers only what the reviewer captured.
     instructions: >
       Open each listed account signed in as yourself. Go back as far as the
-      review period. For each post record its date, its words and its link.
-      Record an account where you found nothing as well.
+      review period. Either save screenshots of the posts into one folder for
+      each account, with each post's author and date in view, or record each
+      post's date, words and link by hand. Record an account where you found
+      nothing as well.
 
 report:
   include:

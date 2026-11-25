@@ -125,12 +125,14 @@ def available_perspectives(directory: Path | None = None) -> list[str]:
 def load_perspective(name: str, directory: Path | None = None) -> Perspective:
     """Load and check one perspective by name."""
     folder = directory or DEFAULT_PERSPECTIVES_DIR
-    path = folder / f"{name}.yaml"
-    if not path.is_file():
-        known = ", ".join(available_perspectives(folder)) or "none"
+    known = available_perspectives(folder)
+    # Only a name from the folder's own list: a name is never used as a path
+    if not isinstance(name, str) or name not in known:
         raise PerspectiveError(
-            f"no perspective named '{name}' in {folder} (available: {known})"
+            f"no perspective named '{str(name)[:60]}' "
+            f"(available: {', '.join(known) or 'none'})"
         )
+    path = folder / f"{name}.yaml"
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as error:

@@ -103,6 +103,7 @@ def build_brief(
     dismissals: dict[str, str],
     runs: dict[str, SourceRun],
     posts: dict[str, dict] | None = None,
+    screenshots: dict[str, dict] | None = None,
 ) -> dict:
     """Assemble the brief as plain data. Every list may be empty.
 
@@ -172,6 +173,7 @@ def build_brief(
                 "covers": " ".join(spec.covers.split()),
                 "url": spec.url,
                 "posts": (posts or {}).get(spec.id),
+                "screenshots": (screenshots or {}).get(spec.id),
             }
         )
     statements = perspective.statements
@@ -258,6 +260,34 @@ def _post_lines(found: dict) -> list[str]:
     lines.append(f"  - Of those: {'; '.join(parts)}.")
     if found["cleared"]:
         lines.append("  - No person read the posts that software did not report.")
+    return lines
+
+
+def _screenshot_lines(found: dict) -> list[str]:
+    """How one source's screenshots were turned into posts."""
+    lines = [
+        f"  - Screenshots: {found['pictures']} saved by "
+        f"{' and '.join(found['captured_by'])}. Their words were copied out by software "
+        f"({', '.join(found['transcribers'])}) and compared with a second program "
+        f"({', '.join(found['compared_with'])}). Software cannot tell whether a "
+        "screenshot is genuine or complete."
+    ]
+    if found["passed_to_a_person"]:
+        lines.append(
+            f"  - {found['passed_to_a_person']} of the screenshots went to a person "
+            "because software could not be relied on to read them."
+        )
+    counted = ", ".join(found["counted_as_the_account"]) or "no name"
+    lines.append(
+        f"  - Posts shown as by {counted} were counted as the account's. "
+        f"{found['by_others_left_out']} posts shown as by other names were left out, "
+        f"{found['by_others_with_violent_wording']} of them with violent wording. "
+        f"{found['no_author_shown_kept']} posts with no author in view were kept."
+    )
+    lines.append(
+        "  - Posts from screenshots were read whatever date they showed, because "
+        "the date was copied by software."
+    )
     return lines
 
 
@@ -364,6 +394,8 @@ def to_markdown(brief: dict) -> str:
         lines.append(line)
         if item["covers"]:
             lines.append(f"  - Covers: {item['covers']}")
+        if item.get("screenshots"):
+            lines += _screenshot_lines(item["screenshots"])
         if item.get("posts"):
             lines += _post_lines(item["posts"])
     lines.append("")

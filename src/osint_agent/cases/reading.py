@@ -76,6 +76,13 @@ class ReaderError(RuntimeError):
     """The reader could not be reached, or its answer could not be understood."""
 
 
+class UnusableAnswer(ReaderError):  # noqa: N818 - reads as what happened
+    """The reader was reached, but what it sent back for this request is no use.
+
+    Asking again later will not help, unlike a reader that is down or busy.
+    """
+
+
 class Reader(Protocol):
     """Anything that can read one batch of posts."""
 

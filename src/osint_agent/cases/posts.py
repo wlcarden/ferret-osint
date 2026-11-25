@@ -49,6 +49,7 @@ from osint_agent.cases.reading import (
     too_long,
 )
 from osint_agent.cases.screens import addresses_a_reader, has_watch_words
+from osint_agent.cases.screenshots import by_author, clean_transcript
 from osint_agent.cases.store import CaseStore
 
 PostCollector = Callable[[str, str | None], Collection]
@@ -62,6 +63,7 @@ FLAG_READER = "flagged_by_reader"
 FLAG_UNREAD = "reader_unreliable"
 FLAG_TOO_LONG = "too_long_for_reader"
 FLAG_NOT_SHOWN = "not_shown_to_reader"
+FLAG_PICTURE = "screenshot_needs_a_person"  # On a screenshot's record, not a post's
 # A promoted post carrying any of these must be cited or set aside by someone.
 NEEDS_DECISION = frozenset({FLAG_READER, FLAG_UNREAD, FLAG_TOO_LONG, FLAG_NOT_SHOWN})
 
@@ -89,11 +91,18 @@ def normalise_handle(listed: str) -> str:
 def evidence_text(post: Post) -> str:
     """A post as it reads once promoted to evidence."""
     when = (post.posted_at or "an unknown date")[:10]
+    if not post.posted_at and post.date_shown:
+        when = f'a date shown as "{post.date_shown}"'
     text = f"{post.kind.capitalize()} by {post.account} on {when}: {post.text}"
     if post.context:
         text += f" [{post.context}]"
     if post.media:
         text += f" ({post.media} image or video attached, not read)"
+    if post.capture_file:
+        text += (
+            f" (words copied by software from the screenshot {post.capture_file}; "
+            "compare them with the picture before relying on them)"
+        )
     return text
 
 
@@ -245,6 +254,24 @@ class PostReview:
         posts: Sequence[object],
     ) -> dict:
         """Store posts a person captured from one listed account."""
+        listed = self.listed_account(case, perspective, spec, account)
+        if isinstance(listed, dict):
+            return listed
+        try:
+            captured = [CapturedPost(**item) for item in posts]  # type: ignore[arg-type]
+        except (ValidationError, TypeError) as error:
+            return {"error": f"a post is not usable: {error}"}
+        new = self.store_captured(case.case_id, spec, listed, checked_by, captured)
+        note = f"Captured by {checked_by}: {new} posts from {listed}."
+        outcome = self._outcome(case, spec, SourceStatus.EMPTY, note, new)
+        if outcome["collected"]:
+            outcome["status"] = SourceStatus.ANSWERED
+        return outcome
+
+    def listed_account(
+        self, case: CaseRecord, perspective: Perspective, spec: SourceSpec, account: str
+    ) -> str | dict:
+        """The account as the subject listed it, or an error naming those listed."""
         accounts = self.accounts_for(case, perspective, spec)
         wanted = normalise_handle(account).lower()
         listed = next((a for a in accounts if a.lower() == wanted), None)
@@ -253,25 +280,45 @@ class PostReview:
                 "error": "posts can only be recorded for an account the subject listed",
                 "accounts": accounts,
             }
-        try:
-            captured = [CapturedPost(**item) for item in posts]  # type: ignore[arg-type]
-        except (ValidationError, TypeError) as error:
-            return {"error": f"a post is not usable: {error}"}
+        return listed
+
+    def store_captured(
+        self,
+        case_id: str,
+        spec: SourceSpec,
+        listed: str,
+        retrieved_by: str,
+        captured: Sequence[CapturedPost],
+        capture_file: str | None = None,
+        dates_shown: Sequence[str] = (),
+    ) -> int:
+        """Store captured posts for a listed account. Returns how many were new.
+
+        A post is known by its account, date, words and link, so the same post
+        captured twice, or seen in two overlapping screenshots, is held once.
+        """
         drafts = []
-        for item in captured:
+        for position, item in enumerate(captured):
             mark = f"{listed}|{item.posted_at}|{item.text}|{item.url}".encode()
+            shown = dates_shown[position] if position < len(dates_shown) else ""
             drafts.append(
                 Post(
                     post_id="",
                     source=spec.id,
                     account=listed,
                     native_id=f"capture:{hashlib.sha256(mark).hexdigest()[:20]}",
-                    retrieved_by=checked_by,
+                    retrieved_by=retrieved_by,
+                    capture_file=capture_file,
+                    date_shown="" if item.posted_at else shown,
                     **item.model_dump(),
                 )
             )
-        new = self.store.add_posts(case.case_id, drafts)
-        note = f"Captured by {checked_by}: {new} posts from {listed}."
+        return self.store.add_posts(case_id, drafts)
+
+    def outcome(
+        self, case: CaseRecord, spec: SourceSpec, note: str, new: int = 0
+    ) -> dict:
+        """What a capture source holds after posts were added to it."""
         outcome = self._outcome(case, spec, SourceStatus.EMPTY, note, new)
         if outcome["collected"]:
             outcome["status"] = SourceStatus.ANSWERED
@@ -305,8 +352,14 @@ class PostReview:
 
     @staticmethod
     def _standing(post: Post, cutoff: str | None) -> str:
-        """outside, image_only, empty or readable."""
-        if cutoff and post.posted_at and post.posted_at[:10] < cutoff:
+        """outside, image_only, empty or readable.
+
+        A post from a screenshot is never outside the review period: its date
+        was copied by software, and a misread year must not keep it from being
+        read.
+        """
+        dated = post.posted_at if not post.capture_file else None
+        if cutoff and dated and dated[:10] < cutoff:
             return "outside"
         if not post.text.strip():
             return "image_only" if post.media else "empty"
@@ -580,4 +633,46 @@ class PostReview:
         for entry in found.values():
             entry["readings"] = spec.readings
             entry["review_period_starts"] = cutoff
+        return found
+
+    def screenshots(self, case_id: str) -> dict[str, dict]:
+        """Per source: how many screenshots were saved and what became of them."""
+        names: dict[tuple[str, str], list[str]] = {}
+        for intake in self.store.intakes(case_id):  # An account may have several folders
+            held = names.setdefault((intake.source, intake.account), [])
+            held += [name for name in intake.names if name not in held]
+        found: dict[str, dict] = {}
+        for capture in self.store.captures(case_id):
+            entry = found.setdefault(
+                capture.source,
+                {
+                    "pictures": 0,
+                    "passed_to_a_person": 0,
+                    "captured_by": [],
+                    "transcribers": [],
+                    "compared_with": [],
+                    "counted_as_the_account": [],
+                    "by_others_left_out": 0,
+                    "by_others_with_violent_wording": 0,
+                    "no_author_shown_kept": 0,
+                },
+            )
+            entry["pictures"] += 1
+            entry["passed_to_a_person"] += capture.status == "needs_a_person"
+            used = names.get((capture.source, capture.account), [])
+            mine, others = by_author(clean_transcript(capture.posts), used)
+            entry["by_others_left_out"] += len(others)
+            entry["by_others_with_violent_wording"] += sum(
+                1 for post in others if has_watch_words(post.text)
+            )
+            entry["no_author_shown_kept"] += sum(1 for _, named in mine if not named)
+            for key, values in (
+                ("captured_by", [capture.checked_by]),
+                ("transcribers", [capture.transcriber]),
+                ("compared_with", [capture.second_look]),
+                ("counted_as_the_account", used),
+            ):
+                for value in values:
+                    if value and value not in entry[key]:
+                        entry[key].append(value)
         return found

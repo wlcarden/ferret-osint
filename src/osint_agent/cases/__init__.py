@@ -7,6 +7,10 @@ that keep a brief honest whoever is driving it, a person or a language model.
 
 Posts from accounts the subject listed are collected and read in bulk, and only
 the ones a reading flags become records that need a decision.
+
+For platforms a program may not read, a reviewer saves screenshots into a
+folder. Their words are copied out by a model that can see pictures, checked
+against a second text-recognition program, and then read like any other post.
 """
 
 from osint_agent.cases.chat_reader import ChatReader

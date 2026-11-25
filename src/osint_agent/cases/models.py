@@ -199,6 +199,39 @@ class Post(CollectedPost):
     retrieved_at: str = Field(default_factory=utc_now)
     retrieved_by: str = "adapter"  # "adapter", or the person who captured it
     evidence_id: str | None = None  # Set when the post is promoted to evidence
+    capture_file: str | None = None  # The screenshot its text was copied from
+    date_shown: str = ""  # The date as the screenshot showed it, when not a full date
+
+
+class Capture(BaseModel):
+    """One screenshot a reviewer saved, and what software made of it."""
+
+    sha256: str
+    file: str
+    source: str
+    account: str
+    checked_by: str
+    transcriber: str = ""
+    second_look: str = ""  # The program the transcript was compared with
+    status: Literal["read", "needs_a_person"] = "read"
+    reason: str = ""
+    posts: list[dict] = Field(default_factory=list)  # Untrusted: as transcribed
+    lines_left_out: int = 0
+    evidence_id: str | None = None  # Set when the picture needs a person
+    at: str = Field(default_factory=utc_now)
+
+
+class Intake(BaseModel):
+    """The latest taking-in of one folder of screenshots for one account."""
+
+    source: str
+    account: str
+    folder: str
+    checked_by: str
+    names: list[str] = Field(default_factory=list)  # What counts as the account
+    in_folder: int = 0
+    waiting: int = 0  # Pictures not yet taken in; a brief waits for these
+    at: str = Field(default_factory=utc_now)
 
 
 class CaseRecord(BaseModel):

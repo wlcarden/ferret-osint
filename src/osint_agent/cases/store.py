@@ -12,8 +12,10 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from osint_agent.cases.models import (
+    Capture,
     CaseRecord,
     EvidenceRecord,
+    Intake,
     Judgement,
     Post,
     SourceRun,
@@ -86,6 +88,21 @@ CREATE TABLE IF NOT EXISTS post_reads (
     reader TEXT NOT NULL,
     at TEXT NOT NULL,
     PRIMARY KEY (case_id, post_id, reading)
+);
+CREATE TABLE IF NOT EXISTS captures (
+    case_id TEXT NOT NULL,
+    account TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    body TEXT NOT NULL,
+    PRIMARY KEY (case_id, account, sha256)
+);
+CREATE TABLE IF NOT EXISTS intakes (
+    case_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    account TEXT NOT NULL,
+    folder TEXT NOT NULL,
+    body TEXT NOT NULL,
+    PRIMARY KEY (case_id, source, account, folder)
 );
 """
 
@@ -282,6 +299,70 @@ class CaseStore:
             )
             return stored.evidence_id
 
+    # Screenshots a reviewer saved
+
+    def add_capture(
+        self, case_id: str, capture: Capture, record: EvidenceRecord | None = None
+    ) -> Capture:
+        """Store what was made of one screenshot, once.
+
+        When the picture needs a person, its evidence record is written in the
+        same step, so a crash cannot leave a doubtful picture with nothing
+        holding the brief back. A screenshot already held is returned as held.
+        """
+        with self._lock, self._connection:
+            held = self._connection.execute(
+                "SELECT body FROM captures "
+                "WHERE case_id = ? AND account = ? AND sha256 = ?",
+                (case_id, capture.account, capture.sha256),
+            ).fetchone()
+            if held:
+                return Capture.model_validate_json(held["body"])
+            if record is not None:
+                row = self._connection.execute(
+                    "SELECT COALESCE(MAX(seq), 0) AS n FROM evidence WHERE case_id = ?",
+                    (case_id,),
+                ).fetchone()
+                seq = row["n"] + 1
+                stored = record.model_copy(update={"evidence_id": f"E{seq}"})
+                self._connection.execute(
+                    "INSERT INTO evidence VALUES (?, ?, ?, ?)",
+                    (case_id, seq, stored.evidence_id, stored.model_dump_json()),
+                )
+                capture = capture.model_copy(update={"evidence_id": stored.evidence_id})
+            self._connection.execute(
+                "INSERT INTO captures VALUES (?, ?, ?, ?)",
+                (case_id, capture.account, capture.sha256, capture.model_dump_json()),
+            )
+        return capture
+
+    def captures(self, case_id: str) -> list[Capture]:
+        """Screenshots held for a case, in the order they were taken in."""
+        rows = self._read(
+            "SELECT body FROM captures WHERE case_id = ? ORDER BY rowid", (case_id,)
+        )
+        return [Capture.model_validate_json(row["body"]) for row in rows]
+
+    def set_intake(self, case_id: str, intake: Intake) -> None:
+        self._write(
+            "INSERT OR REPLACE INTO intakes VALUES (?, ?, ?, ?, ?)",
+            (
+                case_id,
+                intake.source,
+                intake.account,
+                intake.folder,
+                intake.model_dump_json(),
+            ),
+        )
+
+    def intakes(self, case_id: str) -> list[Intake]:
+        rows = self._read(
+            "SELECT body FROM intakes WHERE case_id = ? "
+            "ORDER BY source, account, folder",
+            (case_id,),
+        )
+        return [Intake.model_validate_json(row["body"]) for row in rows]
+
     def add_post_reads(
         self,
         case_id: str,
@@ -289,7 +370,11 @@ class CaseStore:
         reader: str,
         outcomes: Mapping[str, tuple[str, str]],
     ) -> None:
-        """Record one reading's outcome and quote for each post id given."""
+        """Record one reading's outcome and quote for each post id given.
+
+        A reading that flagged a post is never replaced by one that cleared it,
+        so two readings running at once cannot lose a flag or its quote.
+        """
         at = utc_now()
         rows = [
             (case_id, post_id, reading, outcome, quote, reader, at)
@@ -297,7 +382,12 @@ class CaseStore:
         ]
         with self._lock, self._connection:
             self._connection.executemany(
-                "INSERT OR REPLACE INTO post_reads VALUES (?, ?, ?, ?, ?, ?, ?)", rows
+                "INSERT INTO post_reads VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (case_id, post_id, reading) DO UPDATE SET "
+                "outcome = excluded.outcome, quote = excluded.quote, "
+                "reader = excluded.reader, at = excluded.at "
+                "WHERE post_reads.outcome != 'flagged' OR excluded.outcome = 'flagged'",
+                rows,
             )
 
     def post_reads(self, case_id: str) -> dict[str, dict[str, dict[str, str]]]:

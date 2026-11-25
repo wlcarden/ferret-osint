@@ -13,11 +13,14 @@ Rules enforced here, so that they hold whoever is driving:
 * a claim counts only if its quote appears in the evidence it cites;
 * posts are collected only from accounts the subject listed, and each one is
   read before a brief, more than once and with the reader's answers checked;
+* screenshots are read only from the captures folder, and a picture that two
+  programs read differently goes to a person;
 * a brief is refused until every source was tried, every post read, every
   candidate judged and every record either cited, set aside with a reason, or
   about someone else.
 """
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
@@ -29,6 +32,7 @@ from pydantic import BaseModel, Field, ValidationError
 from osint_agent.cases import identity
 from osint_agent.cases.brief import INSTRUCTIONS_FLAG, build_brief, to_markdown
 from osint_agent.cases.identity import Comparison
+from osint_agent.cases.intake import ScreenshotIntake, Transcriber
 from osint_agent.cases.models import (
     Basis,
     Candidate,
@@ -49,6 +53,7 @@ from osint_agent.cases.perspective import (
     load_perspective,
 )
 from osint_agent.cases.posts import (
+    FLAG_PICTURE,
     NEEDS_DECISION,
     PostCollector,
     PostReview,
@@ -57,9 +62,16 @@ from osint_agent.cases.posts import (
 from osint_agent.cases.quotes import quote_is_in
 from osint_agent.cases.reading import Reader
 from osint_agent.cases.screens import addresses_a_reader
+from osint_agent.cases.screenshots import (
+    MIN_NAME_CHARACTERS,
+    SecondLook,
+    tesseract,
+    usable_names,
+)
 from osint_agent.cases.store import CaseStore
 
 MAX_RETURNED_TEXT = 2000
+_SCREENSHOT_NOTE = re.compile(r"Screenshots taken in: \d+\.")
 
 
 class RawRecord(BaseModel):
@@ -126,11 +138,22 @@ class CaseEngine:
         collectors: dict[str, PostCollector] | None = None,
         reader: Reader | None = None,
         today: Callable[[], date] = date.today,
+        captures_dir: Path | None = None,
+        transcriber: Transcriber | None = None,
+        second_look: SecondLook = tesseract,
+        second_look_name: str = "tesseract",
     ):
         self.store = store
         self.sources = dict(sources or {})  # A copy: callers may reuse theirs
         self.perspectives_dir = perspectives_dir
         self.posts = PostReview(store, collectors, reader, today)
+        # The one folder screenshots may be read from. Without it none are read.
+        self.captures_dir = captures_dir
+        if transcriber is None and hasattr(reader, "transcribe"):
+            transcriber = reader  # type: ignore[assignment]
+        self.intake = ScreenshotIntake(
+            self.posts, transcriber, second_look, second_look_name
+        )
         self._loaded: dict[str, tuple[int | None, Perspective]] = {}
 
     def _perspective(self, name: str) -> Perspective:
@@ -467,8 +490,9 @@ class CaseEngine:
             "accounts": accounts,
             "instructions": " ".join(spec.instructions.split()),
             "then": (
-                "record_posts once for each account, with who captured them and the "
-                "posts (an empty list if there were none); then read_posts"
+                "for each account, record_screenshots with a folder of screenshots, "
+                "or record_posts with the posts typed out (an empty list if there "
+                "were none); then read_posts"
             ),
         }
 
@@ -504,6 +528,73 @@ class CaseEngine:
             outcome["note"] = " ".join(part for part in parts if part)
         return self._finish_posts(state, spec, outcome)
 
+    def record_screenshots(
+        self,
+        case_id: str,
+        source: str,
+        account: str,
+        checked_by: str,
+        folder: str,
+        shown_as: list[str] | None = None,
+        max_pictures: int | None = None,
+    ) -> dict:
+        """Take in a folder of screenshots a person saved from one listed account.
+
+        The folder is named relative to the captures folder. Pictures already
+        taken in are not read again, so this can be called until finished is
+        true, and again with shown_as when the account appears under a name
+        other than its handle.
+        """
+        state = self._state(case_id)
+        if state is None:
+            return _error(f"no case '{case_id}'")
+        spec = state.perspective.source(source)
+        if spec is None or spec.kind != "capture":
+            return _error(f"'{source}' is not a capture source in this review")
+        if not checked_by.strip():
+            return _error("say who saved the screenshots")
+        if self.captures_dir is None:
+            return _error("no captures folder is set up, so screenshots cannot be read")
+        if max_pictures is not None and max_pictures < 1:
+            return _error("max_pictures must be at least 1")
+        names = usable_names(shown_as if shown_as is not None else [])
+        if names is None:
+            return _error(
+                "shown_as must be a list of names, each at least "
+                f"{MIN_NAME_CHARACTERS} letters or digits long"
+            )
+        outcome = self.intake.take_in(
+            state.case,
+            state.perspective,
+            spec,
+            account,
+            checked_by.strip(),
+            self.captures_dir,
+            folder if isinstance(folder, str) else "",
+            names,
+            max_pictures,
+        )
+        if "error" in outcome:
+            return outcome
+        earlier = self.store.source_runs(case_id).get(spec.id)
+        # The count of screenshots replaces the one from the call before
+        before = _SCREENSHOT_NOTE.sub("", earlier.note if earlier else "").strip()
+        outcome["note"] = " ".join(part for part in (before, outcome["note"]) if part)
+        result = self._finish_posts(state, spec, outcome)
+        for key, value in outcome.items():
+            if key not in ("status", "note", "collected", "new"):
+                result[key] = value
+        if not outcome["finished"]:
+            result["next"] = (
+                "record_screenshots again until finished is true; a brief waits for it"
+            )
+        elif outcome["pictures"]["passed_to_a_person"]:
+            result["next"] = (
+                "read_posts; it also lists each screenshot a person has to open, "
+                "which is then set aside with dismiss_evidence once checked"
+            )
+        return result
+
     def _undecided_posts(self, state: _State) -> list[dict]:
         """Posts a reading flagged that are neither cited nor set aside yet."""
         case_id = state.case.case_id
@@ -513,13 +604,14 @@ class CaseEngine:
         waiting = []
         for record in state.evidence:
             post = promoted.get(record.evidence_id)
-            if post is None or not NEEDS_DECISION & set(record.flags):
+            picture = FLAG_PICTURE in record.flags
+            if not picture and (post is None or not NEEDS_DECISION & set(record.flags)):
                 continue
             if record.evidence_id in cited or record.evidence_id in set_aside:
                 continue
             shown = self._shown(record)
             shown["url"] = record.url
-            if post["quote"]:
+            if post is not None and post["quote"]:
                 when = (post["posted_at"] or "an unknown date")[:10]
                 shown["claim_if_reported"] = {
                     "evidence_id": record.evidence_id,
@@ -648,6 +740,12 @@ class CaseEngine:
             return ClaimStatus.FAILED, "no evidence with that id in this case"
         if not text.strip():
             return ClaimStatus.FAILED, "the claim has no text"
+        if FLAG_PICTURE in record.flags:
+            return (
+                ClaimStatus.FAILED,
+                "a screenshot's record is a task, not a finding: open the picture, "
+                "record what was missed, then set the record aside",
+            )
         if not quote_is_in(quote, record.text):
             return ClaimStatus.FAILED, "the quote does not appear in that evidence"
         candidate = state.owner(record.evidence_id)
@@ -742,6 +840,12 @@ class CaseEngine:
             "posts_not_read": [
                 f"{source}: {count}" for source, count in sorted(unread.items())
             ],
+            "screenshots_not_taken_in": [
+                f"{intake.source}, {intake.account}, folder {intake.folder}: "
+                f"{intake.waiting}"
+                for intake in self.store.intakes(case_id)
+                if intake.waiting
+            ],
             "candidates_without_a_judgement": unjudged,
             "evidence_neither_cited_nor_set_aside": unaccounted,
         }
@@ -758,7 +862,8 @@ class CaseEngine:
                 "the brief is not ready",
                 outstanding=outstanding,
                 how=(
-                    "run_source for each source; read_posts until every post is read; "
+                    "run_source for each source; record_screenshots until none wait; "
+                    "read_posts until every post is read; "
                     "record_judgement for each candidate; then verify_claims or "
                     "dismiss_evidence for each record"
                 ),
@@ -774,6 +879,7 @@ class CaseEngine:
             dismissals=self.store.dismissals(case_id),
             runs=self.store.source_runs(case_id),
             posts=self.posts.summary(state.case, state.perspective),
+            screenshots=self.posts.screenshots(case_id),
         )
         self.store.log(case_id, "render_brief", {"confirmed": len(brief["confirmed"])})
         return {"brief": brief, "markdown": to_markdown(brief)}

@@ -4,6 +4,7 @@ Each batch is a fresh conversation: the instructions, the batch, one answer.
 Keeping the reading on a local model means the posts never leave the machine.
 """
 
+import base64
 import json
 import os
 import time
@@ -11,10 +12,12 @@ from collections.abc import Callable, Mapping
 
 import httpx
 
-from osint_agent.cases.reading import SUBMIT_TOOL, ReaderError
+from osint_agent.cases.reading import SUBMIT_TOOL, ReaderError, UnusableAnswer
+from osint_agent.cases.screenshots import TRANSCRIBE_INSTRUCTIONS, TRANSCRIBE_TOOL
 
 MAX_WAITS = 30  # Times to wait out a busy endpoint before giving up
 LONGEST_WAIT = 120.0
+MAX_TRANSCRIPT_TOKENS = 8000  # A full screen of posts, copied out
 
 
 def _seconds(value: str | None) -> float:
@@ -24,8 +27,8 @@ def _seconds(value: str | None) -> float:
         return 20.0
 
 
-def extract_flagged(data: object) -> tuple[list | None, str]:
-    """The submitted list from a completion, or why there is none."""
+def extract_list(data: object, tool: str, key: str) -> tuple[list | None, str]:
+    """The list handed to a tool in a completion, or why there is none."""
     choices = data.get("choices") if isinstance(data, dict) else None
     first = choices[0] if isinstance(choices, list) and choices else {}
     message = first.get("message") if isinstance(first, dict) else None
@@ -33,7 +36,7 @@ def extract_flagged(data: object) -> tuple[list | None, str]:
         return None, "the reply held no message"
     for call in message.get("tool_calls") or []:
         function = call.get("function") if isinstance(call, dict) else None
-        if not isinstance(function, dict) or function.get("name") != "submit_review":
+        if not isinstance(function, dict) or function.get("name") != tool:
             continue
         arguments = function.get("arguments")
         if isinstance(arguments, str):
@@ -41,8 +44,8 @@ def extract_flagged(data: object) -> tuple[list | None, str]:
                 arguments = json.loads(arguments)
             except json.JSONDecodeError:
                 return None, "the tool arguments were not JSON"
-        if isinstance(arguments, dict) and isinstance(arguments.get("flagged"), list):
-            return arguments["flagged"], ""
+        if isinstance(arguments, dict) and isinstance(arguments.get(key), list):
+            return arguments[key], ""
         return None, "the tool arguments held no list"
     content = message.get("content")
     content = content if isinstance(content, str) else ""
@@ -52,9 +55,14 @@ def extract_flagged(data: object) -> tuple[list | None, str]:
             parsed = json.loads(content[start : end + 1])
         except json.JSONDecodeError:
             return None, "the text was not JSON"
-        if isinstance(parsed, dict) and isinstance(parsed.get("flagged"), list):
-            return parsed["flagged"], ""
+        if isinstance(parsed, dict) and isinstance(parsed.get(key), list):
+            return parsed[key], ""
     return None, "there was no tool call and no JSON"
+
+
+def extract_flagged(data: object) -> tuple[list | None, str]:
+    """The submitted review from a completion, or why there is none."""
+    return extract_list(data, "submit_review", "flagged")
 
 
 class ChatReader:
@@ -123,6 +131,43 @@ class ChatReader:
                 return flagged
         raise ReaderError(f"the reader's answer could not be understood: {problem}")
 
+    def transcribe(self, picture: bytes) -> list[dict]:
+        """Copy out the posts in one PNG picture. The model has to accept pictures."""
+        shown = base64.b64encode(picture).decode("ascii")
+        payload = {
+            "model": self.name,
+            "messages": [
+                {"role": "system", "content": TRANSCRIBE_INSTRUCTIONS},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Copy out the posts in this screenshot."},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{shown}"},
+                        },
+                    ],
+                },
+            ],
+            "tools": [TRANSCRIBE_TOOL],
+            "max_tokens": max(self.max_tokens, MAX_TRANSCRIPT_TOKENS),
+            "temperature": 0,
+        }
+        if self.effort:
+            payload["reasoning_effort"] = self.effort
+        problem = ""
+        for _ in range(2):
+            posts, problem = extract_list(
+                self._complete(payload), "submit_posts", "posts"
+            )
+            if posts is not None:
+                if self.pause:
+                    self._wait(self.pause)
+                return posts
+        raise UnusableAnswer(
+            f"the transcriber's answer could not be understood: {problem}"
+        )
+
     def _complete(self, payload: dict) -> object:
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
         for _ in range(MAX_WAITS):
@@ -139,6 +184,8 @@ class ChatReader:
                     min(_seconds(reply.headers.get("Retry-After")), LONGEST_WAIT)
                 )
                 continue
+            if reply.status_code in (400, 413, 422):  # This request, not the service
+                raise UnusableAnswer(f"the reader refused it (HTTP {reply.status_code})")
             if reply.status_code != 200:
                 raise ReaderError(f"the reader answered HTTP {reply.status_code}")
             try:
