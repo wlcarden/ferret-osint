@@ -56,11 +56,34 @@ sources:
     kind: adapter
     covers: Federal criminal and civil dockets. Most criminal cases are in state courts.
 
-  - id: public_statements
-    title: Public posts from handles the applicant listed
-    kind: adapter
-    query: handle
-    covers: Only accounts the applicant named on the application.
+  # Accounts are listed on the application with the platform in front, for
+  # example "bluesky:someone.bsky.social" or "facebook:jordan.whitlock.9".
+  - id: bluesky_posts
+    title: Bluesky posts from accounts the applicant listed
+    kind: posts
+    platform: bluesky
+    covers: >
+      Public posts, replies and reposts. Only accounts the applicant named on
+      the application.
+
+  - id: mastodon_posts
+    title: Mastodon posts from accounts the applicant listed
+    kind: posts
+    platform: mastodon
+    covers: >
+      Public posts, replies and reposts on Mastodon-style servers, listed as
+      "mastodon:name@server". Only accounts the applicant named.
+
+  - id: captured_posts
+    title: Posts a reviewer captured from other accounts the applicant listed
+    kind: capture
+    covers: >
+      Facebook, Instagram, X, Reddit and any other platform that does not let a
+      program read it. Covers only what the reviewer captured.
+    instructions: >
+      Open each listed account signed in as yourself. Go back as far as the
+      review period. For each post record its date, its words and its link.
+      Record an account where you found nothing as well.
 
 report:
   include:
@@ -73,6 +96,34 @@ report:
     - Political opinions, party or ideology as such.
     - Health information.
     - Anything about family members or other third parties.
+
+# How posts are read. Each post is read more than once by software, and the
+# ones it reports come to the reviewer for a decision. Edit the wording freely:
+# these lists are given to the reader word for word.
+statements:
+  lookback_years: 5
+  report:
+    - >
+      Threats of violence against a person, a group or property, including
+      veiled ones such as hinting that someone will be harmed, or describing
+      watching or following a person.
+    - >
+      Statements that welcome, praise or call for violence against people, or
+      that praise someone who carried out an attack.
+    - >
+      Jokes about harming people, including jokes about misusing a firearm at a
+      range, a workplace, a school or a public place.
+  leave_out:
+    - >
+      Political opinions, however strongly worded, that do not call for or
+      welcome violence.
+    - Lawful hunting, sport shooting, self-defence training and firearm ownership.
+    - Figures of speech, and quotations from films, songs or history offered as such.
+    - News of violence that the applicant does not welcome.
+    - Video games and fiction.
+  # A made-up post that must always be reported under the rules above. It is
+  # slipped into every batch to show that the reader was reading.
+  control_post: I am going to shoot my neighbor in the face tomorrow morning and I mean it.
 
 caveats:
   - >

@@ -37,6 +37,19 @@ _STATUS_WORDS = {
     SourceStatus.MANUAL_PENDING: "waiting for a person to look",
 }
 
+# A source that collects posts has nothing to search: it either has posts or not.
+_POST_STATUS_WORDS = {
+    SourceStatus.ANSWERED: "posts collected",
+    SourceStatus.EMPTY: "nothing collected",
+}
+
+
+def _meaning(kind: str, status: SourceStatus) -> str:
+    """What a source's status means, in the words the brief uses."""
+    if kind in ("posts", "capture") and status in _POST_STATUS_WORDS:
+        return _POST_STATUS_WORDS[status]
+    return _STATUS_WORDS[status]
+
 
 def _excerpt(text: str, limit: int = 240) -> str:
     flat = " ".join(text.split())
@@ -89,8 +102,13 @@ def build_brief(
     claims: list[dict[str, str]],
     dismissals: dict[str, str],
     runs: dict[str, SourceRun],
+    posts: dict[str, dict] | None = None,
 ) -> dict:
-    """Assemble the brief as plain data. Every list may be empty."""
+    """Assemble the brief as plain data. Every list may be empty.
+
+    `posts` says, for each source that collected posts, how many there were and
+    how they were read.
+    """
     by_id = {record.evidence_id: record for record in evidence}
     owner = {
         eid: candidate for candidate in candidates for eid in candidate.evidence_ids
@@ -149,12 +167,21 @@ def build_brief(
                 "source": spec.id,
                 "title": spec.title,
                 "status": run.status.value if run else "not run",
-                "meaning": _STATUS_WORDS[run.status] if run else "not run",
+                "meaning": _meaning(spec.kind, run.status) if run else "not run",
                 "note": run.note if run else "",
                 "covers": " ".join(spec.covers.split()),
                 "url": spec.url,
+                "posts": (posts or {}).get(spec.id),
             }
         )
+    statements = perspective.statements
+    reading_rules = None
+    if statements is not None:
+        reading_rules = {
+            "report": [" ".join(item.split()) for item in statements.report],
+            "leave_out": [" ".join(item.split()) for item in statements.leave_out],
+            "lookback_years": statements.lookback_years,
+        }
 
     return {
         "title": perspective.title,
@@ -192,9 +219,46 @@ def build_brief(
         "criteria": {
             "include": [" ".join(item.split()) for item in perspective.report.include],
             "exclude": [" ".join(item.split()) for item in perspective.report.exclude],
+            "statements": reading_rules,
         },
         "caveats": [" ".join(item.split()) for item in perspective.caveats],
     }
+
+
+def _post_lines(found: dict) -> list[str]:
+    """How one source's posts were collected and what became of each.
+
+    Every post is in exactly one of the groups named, so they add up to the
+    number collected.
+    """
+    span = f", dated {found['first']} to {found['last']}" if found["first"] else ""
+    people = [name for name in found["collected_by"] if name != "adapter"]
+    how = f"captured by {' and '.join(people)}" if people else "collected by program"
+    accounts = ", ".join(found["accounts"])
+    lines = [f"  - Posts: {found['collected']} from {accounts}{span}, {how}."]
+    times = {1: "once", 2: "twice", 3: "three times"}[found["readings"]]
+    readers = f" ({', '.join(found['readers'])})" if found["readers"] else ""
+    parts = []
+    for key, wording in (
+        ("cleared", f"read {times} by software{readers} and not reported"),
+        ("reported", "reported by software for a decision"),
+        ("addressed_to_a_reader", "addressed to an automated reader"),
+        ("passed_to_a_person", "passed to a person because software could not be relied on"),
+        ("not_read", "not read"),
+        ("image_only_not_read", "with images only, not read"),
+        ("empty", "with nothing in them"),
+    ):
+        if found[key]:
+            parts.append(f"{found[key]} {wording}")
+    if found["outside_review_period"]:
+        parts.append(
+            f"{found['outside_review_period']} from before "
+            f"{found['review_period_starts']}, not read"
+        )
+    lines.append(f"  - Of those: {'; '.join(parts)}.")
+    if found["cleared"]:
+        lines.append("  - No person read the posts that software did not report.")
+    return lines
 
 
 def _finding_lines(item: dict) -> list[str]:
@@ -300,6 +364,8 @@ def to_markdown(brief: dict) -> str:
         lines.append(line)
         if item["covers"]:
             lines.append(f"  - Covers: {item['covers']}")
+        if item.get("posts"):
+            lines += _post_lines(item["posts"])
     lines.append("")
 
     lines += ["## Limits", ""]
@@ -309,4 +375,13 @@ def to_markdown(brief: dict) -> str:
     lines += ["## What this review reports", ""]
     lines += [f"- Reports: {item}" for item in brief["criteria"]["include"]]
     lines += [f"- Leaves out: {item}" for item in brief["criteria"]["exclude"]]
+    rules = brief["criteria"].get("statements")
+    if rules:
+        lines += [f"- In posts, reports: {item}" for item in rules["report"]]
+        lines += [f"- In posts, leaves out: {item}" for item in rules["leave_out"]]
+        if rules["lookback_years"]:
+            years = rules["lookback_years"]
+            lines.append(
+                f"- Reads posts from the last {years} year{'s' if years != 1 else ''}."
+            )
     return "\n".join(lines).rstrip() + "\n"

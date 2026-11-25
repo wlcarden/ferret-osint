@@ -8,12 +8,14 @@ change is also written to the event log, so a case can be audited afterwards.
 import json
 import sqlite3
 import threading
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from osint_agent.cases.models import (
     CaseRecord,
     EvidenceRecord,
     Judgement,
+    Post,
     SourceRun,
     utc_now,
 )
@@ -64,6 +66,26 @@ CREATE TABLE IF NOT EXISTS events (
     at TEXT NOT NULL,
     operation TEXT NOT NULL,
     detail TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS posts (
+    case_id TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    post_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    native_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    PRIMARY KEY (case_id, post_id),
+    UNIQUE (case_id, source, native_id)
+);
+CREATE TABLE IF NOT EXISTS post_reads (
+    case_id TEXT NOT NULL,
+    post_id TEXT NOT NULL,
+    reading TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    quote TEXT NOT NULL,
+    reader TEXT NOT NULL,
+    at TEXT NOT NULL,
+    PRIMARY KEY (case_id, post_id, reading)
 );
 """
 
@@ -186,6 +208,114 @@ class CaseStore:
             "SELECT evidence_id, reason FROM dismissals WHERE case_id = ?", (case_id,)
         )
         return {row["evidence_id"]: row["reason"] for row in rows}
+
+    # Posts collected from listed accounts, and which readings covered each
+
+    def add_posts(self, case_id: str, posts: Sequence[Post]) -> int:
+        """Store posts, skipping any already held. Returns how many were new."""
+        added = 0
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT COALESCE(MAX(seq), 0) AS n FROM posts WHERE case_id = ?",
+                (case_id,),
+            ).fetchone()
+            seq = row["n"]
+            for post in posts:
+                held = self._connection.execute(
+                    "SELECT 1 FROM posts WHERE case_id = ? AND source = ? AND native_id = ?",
+                    (case_id, post.source, post.native_id),
+                ).fetchone()
+                if held:
+                    continue
+                seq += 1
+                stored = post.model_copy(update={"post_id": f"P{seq}"})
+                self._connection.execute(
+                    "INSERT INTO posts VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        case_id,
+                        seq,
+                        stored.post_id,
+                        stored.source,
+                        stored.native_id,
+                        stored.model_dump_json(),
+                    ),
+                )
+                added += 1
+        return added
+
+    def posts(self, case_id: str) -> list[Post]:
+        rows = self._read(
+            "SELECT body FROM posts WHERE case_id = ? ORDER BY seq", (case_id,)
+        )
+        return [Post.model_validate_json(row["body"]) for row in rows]
+
+    def add_post_evidence(self, case_id: str, post_id: str, record: EvidenceRecord) -> str:
+        """Turn a post into evidence in one step, and return the evidence id.
+
+        The id is assigned here, whatever the record carries. A post that is
+        already evidence keeps the record it has, so trying again after a
+        failure cannot make a second.
+        """
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT body FROM posts WHERE case_id = ? AND post_id = ?",
+                (case_id, post_id),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"no post '{post_id}' in case '{case_id}'")
+            post = Post.model_validate_json(row["body"])
+            if post.evidence_id:
+                return post.evidence_id
+            last = self._connection.execute(
+                "SELECT COALESCE(MAX(seq), 0) AS n FROM evidence WHERE case_id = ?",
+                (case_id,),
+            ).fetchone()["n"]
+            stored = record.model_copy(update={"evidence_id": f"E{last + 1}"})
+            self._connection.execute(
+                "INSERT INTO evidence VALUES (?, ?, ?, ?)",
+                (case_id, last + 1, stored.evidence_id, stored.model_dump_json()),
+            )
+            post.evidence_id = stored.evidence_id
+            self._connection.execute(
+                "UPDATE posts SET body = ? WHERE case_id = ? AND post_id = ?",
+                (post.model_dump_json(), case_id, post_id),
+            )
+            return stored.evidence_id
+
+    def add_post_reads(
+        self,
+        case_id: str,
+        reading: str,
+        reader: str,
+        outcomes: Mapping[str, tuple[str, str]],
+    ) -> None:
+        """Record one reading's outcome and quote for each post id given."""
+        at = utc_now()
+        rows = [
+            (case_id, post_id, reading, outcome, quote, reader, at)
+            for post_id, (outcome, quote) in outcomes.items()
+        ]
+        with self._lock, self._connection:
+            self._connection.executemany(
+                "INSERT OR REPLACE INTO post_reads VALUES (?, ?, ?, ?, ?, ?, ?)", rows
+            )
+
+    def post_reads(self, case_id: str) -> dict[str, dict[str, dict[str, str]]]:
+        """Readings by post id, then by reading name."""
+        rows = self._read(
+            "SELECT post_id, reading, outcome, quote, reader, at FROM post_reads "
+            "WHERE case_id = ?",
+            (case_id,),
+        )
+        found: dict[str, dict[str, dict[str, str]]] = {}
+        for row in rows:
+            found.setdefault(row["post_id"], {})[row["reading"]] = {
+                "outcome": row["outcome"],
+                "quote": row["quote"],
+                "reader": row["reader"],
+                "at": row["at"],
+            }
+        return found
 
     # Event log
 

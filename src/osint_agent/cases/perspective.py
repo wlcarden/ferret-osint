@@ -27,15 +27,31 @@ class PerspectiveError(ValueError):
 
 
 class SourceSpec(BaseModel):
-    """One source a perspective consults."""
+    """One source a perspective consults.
+
+    Four kinds: "adapter" is a program that returns records; "manual" is a
+    lookup a person does; "posts" is a program that collects the posts of the
+    accounts the subject listed on one platform; "capture" is a person
+    recording posts from listed accounts that no program may read.
+    """
 
     id: str
     title: str
-    kind: Literal["adapter", "manual"]
+    kind: Literal["adapter", "manual", "posts", "capture"]
     query: Literal["name", "handle"] = "name"
+    platform: str | None = None  # For "posts": which listed accounts it reads
     covers: str = ""  # What the source holds, and what it leaves out
     url: str | None = None  # Where a person performs a manual lookup
     instructions: str = ""  # What a person should search for and record
+
+    @model_validator(mode="after")
+    def _posts_name_their_platform(self) -> "SourceSpec":
+        self.platform = (self.platform or "").strip().lower() or None
+        if self.kind == "posts" and not self.platform:
+            raise ValueError(
+                f"source '{self.id}' collects posts, so it needs a platform"
+            )
+        return self
 
 
 class ReportSpec(BaseModel):
@@ -43,6 +59,23 @@ class ReportSpec(BaseModel):
 
     include: list[str] = Field(min_length=1)
     exclude: list[str] = Field(default_factory=list)
+
+
+class StatementsSpec(BaseModel):
+    """How collected posts are read: what to report, what to leave, how far back.
+
+    The control post is a made-up post that must always be reported under these
+    rules. It is slipped into every batch, and a batch whose answer leaves it
+    out is not trusted. It is required: without it, a reader that reported
+    nothing at all would pass for one that had read everything.
+    """
+
+    report: list[str] = Field(min_length=1)
+    leave_out: list[str] = Field(default_factory=list)
+    lookback_years: int | None = Field(default=None, ge=1, le=50)
+    control_post: str = Field(min_length=10)
+    readings: int = Field(default=2, ge=1, le=3)  # Times each post is read
+    batch_size: int = Field(default=40, ge=5, le=100)
 
 
 class Perspective(BaseModel):
@@ -55,6 +88,7 @@ class Perspective(BaseModel):
     allowed_bases: list[Basis] = Field(min_length=1)
     sources: list[SourceSpec] = Field(min_length=1)
     report: ReportSpec
+    statements: StatementsSpec | None = None
     caveats: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -64,6 +98,16 @@ class Perspective(BaseModel):
             if source.id in seen:
                 raise ValueError(f"source id '{source.id}' appears more than once")
             seen.add(source.id)
+        return self
+
+    @model_validator(mode="after")
+    def _posts_have_reading_rules(self) -> "Perspective":
+        collects = [s.id for s in self.sources if s.kind in ("posts", "capture")]
+        if collects and self.statements is None:
+            raise ValueError(
+                f"source '{collects[0]}' collects posts, so the file needs a "
+                "'statements' section saying what to report"
+            )
         return self
 
     def source(self, source_id: str) -> SourceSpec | None:

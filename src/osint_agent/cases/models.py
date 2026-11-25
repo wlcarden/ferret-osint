@@ -7,15 +7,33 @@ records. It is deliberately narrower than an investigation in the entity graph:
 a case exists to produce a brief a person can act on and defend.
 """
 
-from datetime import UTC, datetime
+import re
+from datetime import UTC, date, datetime
 from enum import Enum
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+_TIMESTAMP = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
+)
+_WEB_ADDRESS = re.compile(r"https?://[^\s<>\"']{1,2000}")
 
 
 def utc_now() -> str:
     """Current time as an ISO 8601 string in UTC, to the second."""
     return datetime.now(UTC).replace(microsecond=0).isoformat()
+
+
+def clean_timestamp(value: object) -> str | None:
+    """The value if it is an ISO date or date-time naming a real day, else None."""
+    if not isinstance(value, str) or not _TIMESTAMP.fullmatch(value):
+        return None
+    try:
+        date.fromisoformat(value[:10])
+    except ValueError:
+        return None
+    return value
 
 
 class Basis(str, Enum):
@@ -132,6 +150,55 @@ class SourceRun(BaseModel):
     status: SourceStatus
     note: str = ""
     ran_at: str = Field(default_factory=utc_now)
+
+
+class CollectedPost(BaseModel):
+    """One post as a collector hands it over."""
+
+    native_id: str  # The platform's own identifier, used to avoid duplicates
+    posted_at: str | None = None  # ISO date or date-time
+    kind: Literal["post", "reply", "repost"] = "post"
+    text: str = ""  # Untrusted: the account holder's words, or the reposted words
+    context: str = ""  # Untrusted: who it replies to, or what it quotes
+    url: str | None = None
+    media: int = Field(default=0, ge=0)  # Images or videos attached; they are not read
+
+    @field_validator("posted_at", mode="before")
+    @classmethod
+    def _only_a_real_date(cls, value: object) -> str | None:
+        """Drop a date that is not one. Platforms pass on what an author typed."""
+        return clean_timestamp(value)
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def _only_a_web_address(cls, value: object) -> str | None:
+        if isinstance(value, str) and _WEB_ADDRESS.fullmatch(value):
+            return value
+        return None
+
+
+class Collection(BaseModel):
+    """What a collector returns for one account."""
+
+    status: SourceStatus = SourceStatus.ANSWERED
+    posts: list[CollectedPost] = Field(default_factory=list)
+    note: str = ""
+    complete: bool = True  # False when collection stopped before the end
+
+
+class Post(CollectedPost):
+    """One post held for a case.
+
+    Posts are kept apart from evidence because an account can hold thousands.
+    A post becomes evidence only when a reading asks for it to be looked at.
+    """
+
+    post_id: str  # P1, P2, ... within the case; assigned by the store
+    source: str
+    account: str  # The listed handle, exactly as the subject gave it
+    retrieved_at: str = Field(default_factory=utc_now)
+    retrieved_by: str = "adapter"  # "adapter", or the person who captured it
+    evidence_id: str | None = None  # Set when the post is promoted to evidence
 
 
 class CaseRecord(BaseModel):

@@ -11,13 +11,16 @@ Rules enforced here, so that they hold whoever is driving:
 * a source can only be asked about the subject, or a handle the subject listed;
 * a candidate can only be judged the way the identifiers support;
 * a claim counts only if its quote appears in the evidence it cites;
-* a brief is refused until every source was tried, every candidate judged and
-  every record either cited, set aside with a reason, or about someone else.
+* posts are collected only from accounts the subject listed, and each one is
+  read before a brief, more than once and with the reader's answers checked;
+* a brief is refused until every source was tried, every post read, every
+  candidate judged and every record either cited, set aside with a reason, or
+  about someone else.
 """
 
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
@@ -45,20 +48,18 @@ from osint_agent.cases.perspective import (
     SourceSpec,
     load_perspective,
 )
+from osint_agent.cases.posts import (
+    NEEDS_DECISION,
+    PostCollector,
+    PostReview,
+    normalise_handle,
+)
+from osint_agent.cases.quotes import quote_is_in
+from osint_agent.cases.reading import Reader
+from osint_agent.cases.screens import addresses_a_reader
 from osint_agent.cases.store import CaseStore
 
 MAX_RETURNED_TEXT = 2000
-MIN_QUOTE_LENGTH = 15
-
-# Text that addresses an automated reader. A match is flagged, never obeyed.
-_INSTRUCTION_PATTERN = re.compile(
-    r"ignore (all |any )?(previous|prior|above|earlier) instructions"
-    r"|system (notice|prompt|message|override)"
-    r"|\b(ai|llm) (agents?|assistants?|models?)\b"
-    r"|do not (mention|reveal|report) this"
-    r"|\b(record_judgement|verify_claims|render_brief|dismiss_evidence|run_source)\b",
-    re.IGNORECASE,
-)
 
 
 class RawRecord(BaseModel):
@@ -78,11 +79,6 @@ class SourceResult(BaseModel):
 
 
 SourceFunction = Callable[[str, PersonFacts], SourceResult]
-
-
-def squash(text: str) -> str:
-    """Lower-case with runs of whitespace collapsed, for comparing quotes."""
-    return " ".join(text.lower().split())
 
 
 def name_variants(name: str) -> list[str]:
@@ -127,10 +123,14 @@ class CaseEngine:
         store: CaseStore,
         sources: dict[str, SourceFunction] | None = None,
         perspectives_dir: Path | None = None,
+        collectors: dict[str, PostCollector] | None = None,
+        reader: Reader | None = None,
+        today: Callable[[], date] = date.today,
     ):
         self.store = store
         self.sources = dict(sources or {})  # A copy: callers may reuse theirs
         self.perspectives_dir = perspectives_dir
+        self.posts = PostReview(store, collectors, reader, today)
         self._loaded: dict[str, tuple[int | None, Perspective]] = {}
 
     def _perspective(self, name: str) -> Perspective:
@@ -189,7 +189,7 @@ class CaseEngine:
         if not facts.name.strip():
             return _error("the subject needs a name")
         facts.handles = [
-            handle.lstrip("@").strip() for handle in facts.handles if handle.strip()
+            normalise_handle(handle) for handle in facts.handles if handle.strip()
         ]
         case = CaseRecord(
             case_id=f"case-{uuid4().hex[:8]}",
@@ -286,7 +286,7 @@ class CaseEngine:
             retrieved_by=by,
             person=raw.person,
             stated_identifier=handle,
-            flags=[INSTRUCTIONS_FLAG] if _INSTRUCTION_PATTERN.search(raw.text) else [],
+            flags=[INSTRUCTIONS_FLAG] if addresses_a_reader(raw.text) else [],
         )
         self.store.add_evidence(case_id, record)
         return record
@@ -312,6 +312,10 @@ class CaseEngine:
             )
         if spec.kind == "manual":
             return self._ask_a_person(state, spec)
+        if spec.kind == "capture":
+            return self._ask_for_capture(state, spec)
+        if spec.kind == "posts":
+            return self._collect_posts(state, spec, query)
         adapter = self.sources.get(spec.id)
         if adapter is None:
             return self._finish(
@@ -418,6 +422,144 @@ class CaseEngine:
         detail = f"Checked by {checked_by.strip()}." + (f" {note}" if note else "")
         return self._finish(case_id, spec, status, kept, detail)
 
+    # Posts from accounts the subject listed
+
+    def _finish_posts(self, state: _State, spec: SourceSpec, outcome: dict) -> dict:
+        """Record a collection or capture, and say what to do with the posts."""
+        if "error" in outcome:
+            return outcome
+        result = self._finish(
+            state.case.case_id, spec, outcome["status"], [], outcome["note"]
+        )
+        del result["evidence"]  # Posts are not evidence until a reading flags them
+        result["posts"] = {"held": outcome["collected"], "new": outcome["new"]}
+        result["next"] = (
+            "read_posts, which reads them and returns those needing a decision"
+        )
+        return result
+
+    def _collect_posts(
+        self, state: _State, spec: SourceSpec, query: str | None
+    ) -> dict:
+        outcome = self.posts.collect(state.case, state.perspective, spec, query)
+        return self._finish_posts(state, spec, outcome)
+
+    def _ask_for_capture(self, state: _State, spec: SourceSpec) -> dict:
+        case_id = state.case.case_id
+        accounts = self.posts.accounts_for(state.case, state.perspective, spec)
+        runs = self.store.source_runs(case_id)
+        if not accounts:
+            note = "The subject listed no account that a person has to capture."
+            result = self._finish(case_id, spec, SourceStatus.EMPTY, [], note)
+            del result["evidence"]
+            return result
+        if spec.id not in runs:
+            pending = SourceRun(source=spec.id, status=SourceStatus.MANUAL_PENDING)
+            self.store.set_source_run(case_id, pending)
+            self.store.log(
+                case_id, "run_source", {"source": spec.id, "status": "manual_pending"}
+            )
+        status = runs[spec.id].status.value if spec.id in runs else "manual_pending"
+        return {
+            "source": spec.id,
+            "status": status,
+            "needs_a_person": True,
+            "accounts": accounts,
+            "instructions": " ".join(spec.instructions.split()),
+            "then": (
+                "record_posts once for each account, with who captured them and the "
+                "posts (an empty list if there were none); then read_posts"
+            ),
+        }
+
+    def record_posts(
+        self,
+        case_id: str,
+        source: str,
+        account: str,
+        checked_by: str,
+        posts: list[dict] | None = None,
+        note: str = "",
+    ) -> dict:
+        """Store the posts a person captured from one account the subject listed."""
+        state = self._state(case_id)
+        if state is None:
+            return _error(f"no case '{case_id}'")
+        spec = state.perspective.source(source)
+        if spec is None or spec.kind != "capture":
+            return _error(f"'{source}' is not a capture source in this review")
+        if not checked_by.strip():
+            return _error("say who captured the posts")
+        outcome = self.posts.record(
+            state.case,
+            state.perspective,
+            spec,
+            account,
+            checked_by.strip(),
+            posts or [],
+        )
+        if "error" not in outcome:
+            earlier = self.store.source_runs(case_id).get(spec.id)
+            parts = [earlier.note if earlier else "", outcome["note"], note]
+            outcome["note"] = " ".join(part for part in parts if part)
+        return self._finish_posts(state, spec, outcome)
+
+    def _undecided_posts(self, state: _State) -> list[dict]:
+        """Posts a reading flagged that are neither cited nor set aside yet."""
+        case_id = state.case.case_id
+        promoted = self.posts.promoted(case_id)
+        cited = {claim["evidence_id"] for claim in self.store.claims(case_id)}
+        set_aside = set(self.store.dismissals(case_id))
+        waiting = []
+        for record in state.evidence:
+            post = promoted.get(record.evidence_id)
+            if post is None or not NEEDS_DECISION & set(record.flags):
+                continue
+            if record.evidence_id in cited or record.evidence_id in set_aside:
+                continue
+            shown = self._shown(record)
+            shown["url"] = record.url
+            if post["quote"]:
+                when = (post["posted_at"] or "an unknown date")[:10]
+                shown["claim_if_reported"] = {
+                    "evidence_id": record.evidence_id,
+                    "text": f"{post['kind'].capitalize()} dated {when}.",
+                    "quote": post["quote"],
+                }
+            waiting.append(shown)
+        return waiting
+
+    def read_posts(self, case_id: str, max_batches: int | None = None) -> dict:
+        """Read the collected posts, and return those that need a decision.
+
+        Reading picks up where it stopped, so it is safe to call again after a
+        failure or a batch limit.
+        """
+        state = self._state(case_id)
+        if state is None:
+            return _error(f"no case '{case_id}'")
+        outcome = self.posts.read(state.case, state.perspective, max_batches)
+        if "error" in outcome:
+            return outcome
+        self.store.log(
+            case_id,
+            "read_posts",
+            {
+                key: outcome[key]
+                for key in ("reader", "reader_calls", "flagged_now", "finished")
+            },
+        )
+        state = self._state(case_id)  # Flagged posts are evidence now
+        assert state is not None
+        outcome["needs_a_decision"] = self._undecided_posts(state)
+        outcome["next"] = (
+            "record_judgement for the account's candidate, then verify_claims or "
+            "dismiss_evidence for each post listed"
+            if outcome["finished"]
+            else "read_posts again until finished is true"
+        )
+        return outcome
+
     # Identity
 
     def list_candidates(self, case_id: str) -> dict:
@@ -506,8 +648,7 @@ class CaseEngine:
             return ClaimStatus.FAILED, "no evidence with that id in this case"
         if not text.strip():
             return ClaimStatus.FAILED, "the claim has no text"
-        needed = min(MIN_QUOTE_LENGTH, len(squash(record.text)))
-        if len(squash(quote)) < needed or squash(quote) not in squash(record.text):
+        if not quote_is_in(quote, record.text):
             return ClaimStatus.FAILED, "the quote does not appear in that evidence"
         candidate = state.owner(record.evidence_id)
         judgement = state.judgements.get(candidate.candidate_id)
@@ -583,12 +724,23 @@ class CaseEngine:
                 judgement is not None
                 and judgement.decision is Decision.DIFFERENT_PERSON
             )
-            reported = record.evidence_id in cited or INSTRUCTIONS_FLAG in record.flags
+            # A record that addresses an automated reader is printed in the brief
+            # without being cited. A post is different: it may say more than that,
+            # so it still needs a decision.
+            printed_anyway = (
+                INSTRUCTIONS_FLAG in record.flags
+                and not NEEDS_DECISION & set(record.flags)
+            )
+            reported = record.evidence_id in cited or printed_anyway
             if not (someone_else or reported or record.evidence_id in set_aside):
                 unaccounted.append(record.evidence_id)
+        unread = self.posts.unread(state.case, state.perspective)
         found = {
             "sources_not_run": [
                 s.id for s in state.perspective.sources if s.id not in runs
+            ],
+            "posts_not_read": [
+                f"{source}: {count}" for source, count in sorted(unread.items())
             ],
             "candidates_without_a_judgement": unjudged,
             "evidence_neither_cited_nor_set_aside": unaccounted,
@@ -606,8 +758,9 @@ class CaseEngine:
                 "the brief is not ready",
                 outstanding=outstanding,
                 how=(
-                    "run_source for each source; record_judgement for each candidate; "
-                    "then verify_claims or dismiss_evidence for each record"
+                    "run_source for each source; read_posts until every post is read; "
+                    "record_judgement for each candidate; then verify_claims or "
+                    "dismiss_evidence for each record"
                 ),
             )
         brief = build_brief(
@@ -620,6 +773,7 @@ class CaseEngine:
             claims=self.store.claims(case_id),
             dismissals=self.store.dismissals(case_id),
             runs=self.store.source_runs(case_id),
+            posts=self.posts.summary(state.case, state.perspective),
         )
         self.store.log(case_id, "render_brief", {"confirmed": len(brief["confirmed"])})
         return {"brief": brief, "markdown": to_markdown(brief)}
