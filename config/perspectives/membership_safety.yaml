@@ -1,0 +1,83 @@
+# Membership safety review
+#
+# A perspective is an investigation type. Copy this file, rename it, and edit it
+# to create another. The file name must match `name`.
+
+name: membership_safety
+title: Membership safety review
+purpose: >
+  Review an applicant to a club for court records and public statements that
+  bear on the safety of other members. The applicant has been told about the
+  review. The brief reports evidence; the membership committee decides.
+subject_kind: person
+
+# A case can only be opened on one of these. "notice" means the application told
+# the applicant a review would happen; "consent" means they agreed to it.
+allowed_bases:
+  - consent
+  - notice
+
+sources:
+  - id: va_statewide_case_search
+    title: Virginia statewide case search
+    kind: manual
+    url: https://eapps.courts.state.va.us/ocis/landing
+    covers: >
+      Adult criminal cases in juvenile and domestic relations district courts,
+      criminal and traffic cases in general district courts and select circuit
+      courts. Civil protective orders are not confirmed as covered.
+    instructions: >
+      Search each spelling of the name. For every case found record the court,
+      case number, charge, disposition, and the date of birth and address
+      shown. Record a search that finds nothing as well.
+
+  - id: md_case_search
+    title: Maryland Judiciary Case Search
+    kind: manual
+    url: https://casesearch.courts.state.md.us/casesearch/
+    covers: Coverage not confirmed. The site refuses automated reads.
+    instructions: >
+      Search each spelling of the name in criminal and civil records, including
+      peace and protective orders. Record court, case number, charge or order
+      type, disposition, and the date of birth and address shown.
+
+  - id: dc_superior_court
+    title: DC Superior Court case search
+    kind: manual
+    url: https://www.dccourts.gov/superior-court/cases-online
+    covers: Coverage not confirmed. The site refuses automated reads.
+    instructions: >
+      Search each spelling of the name in criminal and domestic violence
+      records. Record case number, charge, disposition, and any date of birth
+      or address shown.
+
+  - id: federal_courts
+    title: Federal court dockets
+    kind: adapter
+    covers: Federal criminal and civil dockets. Most criminal cases are in state courts.
+
+  - id: public_statements
+    title: Public posts from handles the applicant listed
+    kind: adapter
+    query: handle
+    covers: Only accounts the applicant named on the application.
+
+report:
+  include:
+    - Every court or registry record tied to the applicant, with its outcome.
+    - >
+      Every public statement by the applicant that threatens, endorses or jokes
+      about violence against people or property, quoted exactly with its date.
+    - Any record that could not be tied to the applicant or ruled out.
+  exclude:
+    - Political opinions, party or ideology as such.
+    - Health information.
+    - Anything about family members or other third parties.
+
+caveats:
+  - >
+    A search that finds nothing is weak evidence. State court coverage is
+    uneven and name searches miss records filed under another spelling.
+  - >
+    A record counts against an applicant only after they have been shown it and
+    given the chance to say it is not theirs.
