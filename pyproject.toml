@@ -44,6 +44,10 @@ dependencies = [
     # --- Document Parsing ---
     "python-docx",           # DOCX text extraction (imported as `docx`)
     "openpyxl",              # XLSX text extraction
+    "pillow",                # Opening and cutting up screenshots of posts
+
+    # --- Tool server ---
+    "mcp>=2.3,<3",           # Model Context Protocol server for the case engine
 
     # --- Config & Environment ---
     "python-dotenv",         # .env file loading
